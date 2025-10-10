@@ -1,0 +1,43 @@
+# Don't include the venv in the published package
+.venv/
+
+# Don't include node_modules (should be obvious but just in case)
+node_modules/
+
+# Don't include test files if we add them later
+test/
+tests/
+*.test.js
+
+# Don't include Python cache and build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+build/
+dist/
+*.egg
+
+# Don't include Python compiled files recursively
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/build/
+**/*.egg-info/
+
+# Don't include OS files
+.DS_Store
+Thumbs.db
+
+# Don't include git files
+.git/
+.gitignore
+
+# Don't include development files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

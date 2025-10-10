@@ -1,0 +1,52 @@
+{
+  "name": "mcp-test-mcp",
+  "version": "0.1.1",
+  "description": "An MCP server for testing MCP servers you are developing with AI assistants",
+  "main": "index.js",
+  "bin": {
+    "mcp-test-mcp": "./index.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "fastmcp",
+    "claude",
+    "ai",
+    "llm",
+    "testing",
+    "development",
+    "debugging",
+    "anthropic",
+    "claude-desktop",
+    "mcp-server",
+    "developer-tools",
+    "ai-assistant"
+  ],
+  "author": "Wes Jackson",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rdwj/mcp-test-mcp"
+  },
+  "homepage": "https://github.com/rdwj/mcp-test-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/rdwj/mcp-test-mcp/issues"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "files": [
+    "index.js",
+    "scripts/",
+    "python-src/",
+    "README.md"
+  ]
+}
