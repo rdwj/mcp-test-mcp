@@ -115,23 +115,164 @@ source venv/bin/activate
 pip install mcp-test-mcp
 ```
 
+### Using uv (Recommended for Quick Setup)
+
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer and runner. With the project on GitHub, you can run mcp-test-mcp directly without cloning:
+
+```bash
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Or on macOS: brew install uv
+
+# Run the server directly from GitHub (no clone needed!)
+uvx --from git+https://github.com/rdwj/mcp-test-mcp mcp-test-mcp
+
+# Or run from a local clone
+git clone https://github.com/rdwj/mcp-test-mcp
+cd mcp-test-mcp
+uv run mcp-test-mcp
+
+# Install globally with uv for use in Claude Code
+uv tool install git+https://github.com/rdwj/mcp-test-mcp
+```
+
+#### Claude Code Configuration with uv
+
+You have several options for configuring mcp-test-mcp with uv in Claude Code/Desktop:
+
+**Option 1: Run from GitHub (recommended - no clone needed!)**
+
+*Basic configuration (most users):*
+```json
+{
+  "mcpServers": {
+    "mcp-test-mcp": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/rdwj/mcp-test-mcp", "mcp-test-mcp"]
+    }
+  }
+}
+```
+
+*With LLM integration (optional):*
+```json
+{
+  "mcpServers": {
+    "mcp-test-mcp": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/rdwj/mcp-test-mcp", "mcp-test-mcp"],
+      "env": {
+        "LLM_URL": "https://your-llm-endpoint.com/v1",
+        "LLM_MODEL_NAME": "your-model-name",
+        "LLM_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Option 2: Run from local clone**
+
+*Basic configuration:*
+```json
+{
+  "mcpServers": {
+    "mcp-test-mcp": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/mcp-test-mcp", "mcp-test-mcp"]
+    }
+  }
+}
+```
+
+*With LLM integration (optional):*
+```json
+{
+  "mcpServers": {
+    "mcp-test-mcp": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/mcp-test-mcp", "mcp-test-mcp"],
+      "env": {
+        "LLM_URL": "https://your-llm-endpoint.com/v1",
+        "LLM_MODEL_NAME": "your-model-name",
+        "LLM_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Option 3: Global install with uv tool**
+
+*Basic configuration:*
+```json
+{
+  "mcpServers": {
+    "mcp-test-mcp": {
+      "command": "mcp-test-mcp"
+    }
+  }
+}
+```
+
+*With LLM integration (optional):*
+```json
+{
+  "mcpServers": {
+    "mcp-test-mcp": {
+      "command": "mcp-test-mcp",
+      "env": {
+        "LLM_URL": "https://your-llm-endpoint.com/v1",
+        "LLM_MODEL_NAME": "your-model-name",
+        "LLM_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Note about LLM configuration:** The `env` section is **completely optional**. The server and all testing tools work without it. LLM configuration is only required if you want to use the `execute_prompt_with_llm` tool for end-to-end prompt testing. All other tools (connect, list_tools, call_tool, list_resources, list_prompts, etc.) work without any LLM configuration.
+
 ## Configuration
 
 ### Claude Code Configuration
 
 Add mcp-test-mcp to your Claude Code MCP settings (typically in `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%/Claude/claude_desktop_config.json` on Windows):
 
+**Using standard Python (pip install)**
+
+*Basic configuration:*
+```json
+{
+  "mcpServers": {
+    "mcp-test-mcp": {
+      "command": "python",
+      "args": ["-m", "mcp_test_mcp"]
+    }
+  }
+}
+```
+
+*With LLM integration (optional):*
 ```json
 {
   "mcpServers": {
     "mcp-test-mcp": {
       "command": "python",
       "args": ["-m", "mcp_test_mcp"],
-      "transport": "stdio"
+      "env": {
+        "LLM_URL": "https://your-llm-endpoint.com/v1",
+        "LLM_MODEL_NAME": "your-model-name",
+        "LLM_API_KEY": "your-api-key"
+      }
     }
   }
 }
 ```
+
+**Using uv (recommended)**
+
+See the "Using uv" section above for multiple configuration options.
 
 After adding this configuration, restart Claude Code/Desktop for the changes to take effect.
 
