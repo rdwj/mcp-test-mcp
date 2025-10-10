@@ -1,0 +1,3838 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+advanced_features/
+  elicitation.md
+  logging.md
+  messages.md
+  progress.md
+  roots.md
+  sampling.md
+authentication/
+  bearer.md
+  oauth.md
+patterns/
+  cli.md
+  decorating-methods.md
+  tool-transformation.md
+client-overview.md
+prompts.md
+resources.md
+tools.md
+transports.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="advanced_features/elicitation.md">
+# User Elicitation
+
+> Handle server-initiated user input requests with structured schemas.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.10.0" />
+
+## What is Elicitation?
+
+Elicitation allows MCP servers to request structured input from users during tool execution. Instead of requiring all inputs upfront, servers can interactively ask users for information as needed - like prompting for missing parameters, requesting clarification, or gathering additional context.
+
+For example, a file management tool might ask "Which directory should I create?" or a data analysis tool might request "What date range should I analyze?"
+
+## How FastMCP Makes Elicitation Easy
+
+FastMCP's client provides a helpful abstraction layer that:
+
+* **Converts JSON schemas to Python types**: The raw MCP protocol uses JSON schemas, but FastMCP automatically converts these to Python dataclasses
+* **Provides structured constructors**: Instead of manually building dictionaries that match the schema, you get dataclass constructors that ensure correct structure
+* **Handles type conversion**: FastMCP takes care of converting between JSON representations and Python objects
+* **Runtime introspection**: You can inspect the generated dataclass fields to understand the expected structure
+
+When you implement an elicitation handler, FastMCP gives you a dataclass type that matches the server's schema, making it easy to create properly structured responses without having to manually parse JSON schemas.
+
+## Elicitation Handler
+
+Provide an `elicitation_handler` function when creating the client. FastMCP automatically converts the server's JSON schema into a Python dataclass type, making it easy to construct the response:
+
+```python
+from fastmcp import Client
+from fastmcp.client.elicitation import ElicitResult
+
+async def elicitation_handler(message: str, response_type: type, params, context):
+    # Present the message to the user and collect input
+    user_input = input(f"{message}: ")
+  
+    # Create response using the provided dataclass type
+    # FastMCP converted the JSON schema to this Python type for you
+    response_data = response_type(value=user_input)
+  
+    # You can return data directly - FastMCP will implicitly accept the elicitation
+    return response_data
+  
+    # Or explicitly return an ElicitResult for more control
+    # return ElicitResult(action="accept", content=response_data)
+
+client = Client(
+    "my_mcp_server.py",
+    elicitation_handler=elicitation_handler,
+)
+```
+
+### Handler Parameters
+
+The elicitation handler receives four parameters:
+
+<Card icon="code" title="Elicitation Handler Parameters">
+  <ResponseField name="message" type="str">
+    The prompt message to display to the user
+  </ResponseField>
+
+<ResponseField name="response_type" type="type">
+    A Python dataclass type that FastMCP created from the server's JSON schema. Use this to construct your response with proper typing and IDE support. If the server requests an empty object (indicating no response), this will be `None`.
+  </ResponseField>
+
+<ResponseField name="params" type="ElicitRequestParams">
+    The original MCP elicitation request parameters, including the raw JSON schema in `params.requestedSchema` if you need it
+  </ResponseField>
+
+<ResponseField name="context" type="RequestContext">
+    Request context containing metadata about the elicitation request
+  </ResponseField>
+</Card>
+
+### Response Actions
+
+The handler can return data directly (which implicitly accepts the elicitation) or an `ElicitResult` object for more control over the response action:
+
+<Card icon="code" title="ElicitResult Structure">
+  <ResponseField name="action" type="Literal['accept', 'decline', 'cancel']">
+    How the user responded to the elicitation request
+  </ResponseField>
+
+<ResponseField name="content" type="dataclass instance | dict | None">
+    The user's input data (required for "accept", omitted for "decline"/"cancel")
+  </ResponseField>
+</Card>
+
+**Action Types:**
+
+* **`accept`**: User provided valid input - include their data in the `content` field
+* **`decline`**: User chose not to provide the requested information - omit `content`
+* **`cancel`**: User cancelled the entire operation - omit `content`
+
+## Basic Example
+
+```python
+from fastmcp import Client
+from fastmcp.client.elicitation import ElicitResult
+
+async def basic_elicitation_handler(message: str, response_type: type, params, context):
+    print(f"Server asks: {message}")
+  
+    # Simple text input for demonstration
+    user_response = input("Your response: ")
+  
+    if not user_response:
+        # For non-acceptance, use ElicitResult explicitly
+        return ElicitResult(action="decline")
+  
+    # Use the response_type dataclass to create a properly structured response
+    # FastMCP handles the conversion from JSON schema to Python type
+    # Return data directly - FastMCP will implicitly accept the elicitation
+    return response_type(value=user_response)
+
+client = Client(
+    "my_mcp_server.py", 
+    elicitation_handler=basic_elicitation_handler
+)
+```
+</file>
+
+<file path="advanced_features/logging.md">
+# Server Logging
+
+> Receive and handle log messages from MCP servers.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.0.0" />
+
+MCP servers can emit log messages to clients. The client can handle these logs through a log handler callback.
+
+## Log Handler
+
+Provide a `log_handler` function when creating the client. For robust logging, the log messages can be integrated with Python's standard `logging` module.
+
+```python
+import logging
+from fastmcp import Client
+from fastmcp.client.logging import LogMessage
+
+# In a real app, you might configure this in your main entry point
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Get a logger for the module where the client is used
+logger = logging.getLogger(__name__)
+
+# This mapping is useful for converting MCP level strings to Python's levels
+LOGGING_LEVEL_MAP = logging.getLevelNamesMapping()
+
+async def log_handler(message: LogMessage):
+    """
+    Handles incoming logs from the MCP server and forwards them
+    to the standard Python logging system.
+    """
+    msg = message.data.get('msg')
+    extra = message.data.get('extra')
+
+    # Convert the MCP log level to a Python log level
+    level = LOGGING_LEVEL_MAP.get(message.level.upper(), logging.INFO)
+
+    # Log the message using the standard logging library
+    logger.log(level, msg, extra=extra)
+
+
+client = Client(
+    "my_mcp_server.py",
+    log_handler=log_handler,
+)
+```
+
+## Handling Structured Logs
+
+The `message.data` attribute is a dictionary that contains the log payload from the server. This enables structured logging, allowing you to receive rich, contextual information.
+
+The dictionary contains two keys:
+
+* `msg`: The string log message.
+* `extra`: A dictionary containing any extra data sent from the server.
+
+This structure is preserved even when logs are forwarded through a FastMCP proxy, making it a powerful tool for debugging complex, multi-server applications.
+
+### Handler Parameters
+
+The `log_handler` is called every time a log message is received. It receives a `LogMessage` object:
+
+<Card icon="code" title="Log Handler Parameters">
+  <ResponseField name="LogMessage" type="Log Message Object">
+    <Expandable title="attributes">
+      <ResponseField name="level" type="Literal["debug", "info", "notice", "warning", "error", "critical", "alert", "emergency"]">
+        The log level
+      </ResponseField>
+
+    `<ResponseField name="logger" type="str | None">`
+        The logger name (optional, may be None)
+      `</ResponseField>`
+
+    `<ResponseField name="data" type="dict">`
+        The log payload, containing `msg` and `extra` keys.
+      `</ResponseField>`
+    `</Expandable>`
+  `</ResponseField>`
+`</Card>`
+
+```python
+async def detailed_log_handler(message: LogMessage):
+    msg = message.data.get('msg')
+    extra = message.data.get('extra')
+
+    if message.level == "error":
+        print(f"ERROR: {msg} | Details: {extra}")
+    elif message.level == "warning":
+        print(f"WARNING: {msg} | Details: {extra}")
+    else:
+        print(f"{message.level.upper()}: {msg}")
+```
+
+## Default Log Handling
+
+If you don't provide a custom `log_handler`, FastMCP's default handler routes server logs to the appropriate Python logging levels. The MCP levels are mapped as follows: `notice` → INFO; `alert` and `emergency` → CRITICAL. If the server includes a logger name, it is prefixed in the message, and any `extra` data is forwarded via the logging `extra` parameter.
+
+```python
+client = Client("my_mcp_server.py")
+
+async with client:
+    # Server logs are forwarded at their proper severity (DEBUG/INFO/WARNING/ERROR/CRITICAL)
+    await client.call_tool("some_tool")
+```
+</file>
+
+<file path="advanced_features/messages.md">
+# Message Handling
+
+> Handle MCP messages, requests, and notifications with custom message handlers.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.9.1" />
+
+MCP clients can receive various types of messages from servers, including requests that need responses and notifications that don't. The message handler provides a unified way to process all these messages.
+
+## Function-Based Handler
+
+The simplest way to handle messages is with a function that receives all messages:
+
+```python
+from fastmcp import Client
+
+async def message_handler(message):
+    """Handle all MCP messages from the server."""
+    if hasattr(message, 'root'):
+        method = message.root.method
+        print(f"Received: {method}")
+      
+        # Handle specific notifications
+        if method == "notifications/tools/list_changed":
+            print("Tools have changed - might want to refresh tool cache")
+        elif method == "notifications/resources/list_changed":
+            print("Resources have changed")
+
+client = Client(
+    "my_mcp_server.py",
+    message_handler=message_handler,
+)
+```
+
+## Message Handler Class
+
+For fine-grained targeting, FastMCP provides a `MessageHandler` class you can subclass to take advantage of specific hooks:
+
+```python
+from fastmcp import Client
+from fastmcp.client.messages import MessageHandler
+import mcp.types
+
+class MyMessageHandler(MessageHandler):
+    async def on_tool_list_changed(
+        self, notification: mcp.types.ToolListChangedNotification
+    ) -> None:
+        """Handle tool list changes specifically."""
+        print("Tool list changed - refreshing available tools")
+
+client = Client(
+    "my_mcp_server.py",
+    message_handler=MyMessageHandler(),
+)
+```
+
+### Available Handler Methods
+
+All handler methods receive a single argument - the specific message type:
+
+<Card icon="code" title="Message Handler Methods">
+  <ResponseField name="on_message(message)" type="Any MCP message">
+    Called for ALL messages (requests and notifications)
+  </ResponseField>
+
+<ResponseField name="on_request(request)" type="mcp.types.ClientRequest">
+    Called for requests that expect responses
+  </ResponseField>
+
+<ResponseField name="on_notification(notification)" type="mcp.types.ServerNotification">
+    Called for notifications (fire-and-forget)
+  </ResponseField>
+
+<ResponseField name="on_tool_list_changed(notification)" type="mcp.types.ToolListChangedNotification">
+    Called when the server's tool list changes
+  </ResponseField>
+
+<ResponseField name="on_resource_list_changed(notification)" type="mcp.types.ResourceListChangedNotification">
+    Called when the server's resource list changes
+  </ResponseField>
+
+<ResponseField name="on_prompt_list_changed(notification)" type="mcp.types.PromptListChangedNotification">
+    Called when the server's prompt list changes
+  </ResponseField>
+
+<ResponseField name="on_progress(notification)" type="mcp.types.ProgressNotification">
+    Called for progress updates during long-running operations
+  </ResponseField>
+
+<ResponseField name="on_logging_message(notification)" type="mcp.types.LoggingMessageNotification">
+    Called for log messages from the server
+  </ResponseField>
+</Card>
+
+## Example: Handling Tool Changes
+
+Here's a practical example of handling tool list changes:
+
+```python
+from fastmcp.client.messages import MessageHandler
+import mcp.types
+
+class ToolCacheHandler(MessageHandler):
+    def __init__(self):
+        self.cached_tools = []
+  
+    async def on_tool_list_changed(
+        self, notification: mcp.types.ToolListChangedNotification
+    ) -> None:
+        """Clear tool cache when tools change."""
+        print("Tools changed - clearing cache")
+        self.cached_tools = []  # Force refresh on next access
+
+client = Client("server.py", message_handler=ToolCacheHandler())
+```
+
+## Handling Requests
+
+While the message handler receives server-initiated requests, for most use cases you should use the dedicated callback parameters instead:
+
+* **Sampling requests**: Use [`sampling_handler`](/clients/sampling)
+* **Progress requests**: Use [`progress_handler`](/clients/progress)
+* **Log requests**: Use [`log_handler`](/clients/logging)
+
+The message handler is primarily for monitoring and handling notifications rather than responding to requests.
+</file>
+
+<file path="advanced_features/progress.md">
+# Progress Monitoring
+
+> Handle progress notifications from long-running server operations.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.3.5" />
+
+MCP servers can report progress during long-running operations. The client can receive these updates through a progress handler.
+
+## Progress Handler
+
+Set a progress handler when creating the client:
+
+```python
+from fastmcp import Client
+
+async def my_progress_handler(
+    progress: float, 
+    total: float | None, 
+    message: str | None
+) -> None:
+    if total is not None:
+        percentage = (progress / total) * 100
+        print(f"Progress: {percentage:.1f}% - {message or ''}")
+    else:
+        print(f"Progress: {progress} - {message or ''}")
+
+client = Client(
+    "my_mcp_server.py",
+    progress_handler=my_progress_handler
+)
+```
+
+### Handler Parameters
+
+The progress handler receives three parameters:
+
+<Card icon="code" title="Progress Handler Parameters">
+  <ResponseField name="progress" type="float">
+    Current progress value
+  </ResponseField>
+
+<ResponseField name="total" type="float | None">
+    Expected total value (may be None)
+  </ResponseField>
+
+<ResponseField name="message" type="str | None">
+    Optional status message (may be None)
+  </ResponseField>
+</Card>
+
+## Per-Call Progress Handler
+
+Override the progress handler for specific tool calls:
+
+```python
+async with client:
+    # Override with specific progress handler for this call
+    result = await client.call_tool(
+        "long_running_task", 
+        {"param": "value"}, 
+        progress_handler=my_progress_handler
+    )
+```
+</file>
+
+<file path="advanced_features/roots.md">
+# Client Roots
+
+> Provide local context and resource boundaries to MCP servers.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.0.0" />
+
+Roots are a way for clients to inform servers about the resources they have access to. Servers can use this information to adjust behavior or provide more relevant responses.
+
+## Setting Static Roots
+
+Provide a list of roots when creating the client:
+
+<CodeGroup>
+  ```python Static Roots
+  from fastmcp import Client
+
+  client = Client(
+      "my_mcp_server.py",
+      roots=["/path/to/root1", "/path/to/root2"]
+  )
+
+```
+
+  ```python Dynamic Roots Callback
+  from fastmcp import Client
+  from fastmcp.client.roots import RequestContext
+
+  async def roots_callback(context: RequestContext) -> list[str]:
+      print(f"Server requested roots (Request ID: {context.request_id})")
+      return ["/path/to/root1", "/path/to/root2"]
+
+  client = Client(
+      "my_mcp_server.py", 
+      roots=roots_callback
+  )
+```
+
+</CodeGroup>
+</file>
+
+<file path="advanced_features/sampling.md">
+# LLM Sampling
+
+> Handle server-initiated LLM sampling requests.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.0.0" />
+
+MCP servers can request LLM completions from clients. The client handles these requests through a sampling handler callback.
+
+## Sampling Handler
+
+Provide a `sampling_handler` function when creating the client:
+
+```python
+from fastmcp import Client
+from fastmcp.client.sampling import (
+    SamplingMessage,
+    SamplingParams,
+    RequestContext,
+)
+
+async def sampling_handler(
+    messages: list[SamplingMessage],
+    params: SamplingParams,
+    context: RequestContext
+) -> str:
+    # Your LLM integration logic here
+    # Extract text from messages and generate a response
+    return "Generated response based on the messages"
+
+client = Client(
+    "my_mcp_server.py",
+    sampling_handler=sampling_handler,
+)
+```
+
+### Handler Parameters
+
+The sampling handler receives three parameters:
+
+<Card icon="code" title="Sampling Handler Parameters">
+  <ResponseField name="SamplingMessage" type="Sampling Message Object">
+    <Expandable title="attributes">
+      <ResponseField name="role" type="Literal["user", "assistant"]">
+        The role of the message.
+      </ResponseField>
+
+    `<ResponseField name="content" type="TextContent | ImageContent | AudioContent">`
+        The content of the message.
+
+    TextContent is most common, and has a`.text` attribute.
+      `</ResponseField>`
+    `</Expandable>`
+  `</ResponseField>`
+
+<ResponseField name="SamplingParams" type="Sampling Parameters Object">
+    <Expandable title="attributes">
+      <ResponseField name="messages" type="list[SamplingMessage]">
+        The messages to sample from
+      </ResponseField>
+
+    `<ResponseField name="modelPreferences" type="ModelPreferences | None">`
+        The server's preferences for which model to select. The client MAY ignore
+        these preferences.
+
+    `<Expandable title="attributes">`
+          `<ResponseField name="hints" type="list[ModelHint] | None">`
+            The hints to use for model selection.
+          `</ResponseField>`
+
+    `<ResponseField name="costPriority" type="float | None">`
+            The cost priority for model selection.
+          `</ResponseField>`
+
+    `<ResponseField name="speedPriority" type="float | None">`
+            The speed priority for model selection.
+          `</ResponseField>`
+
+    `<ResponseField name="intelligencePriority" type="float | None">`
+            The intelligence priority for model selection.
+          `</ResponseField>`
+        `</Expandable>`
+      `</ResponseField>`
+
+    `<ResponseField name="systemPrompt" type="str | None">`
+        An optional system prompt the server wants to use for sampling.
+      `</ResponseField>`
+
+    `<ResponseField name="includeContext" type="IncludeContext | None">`
+        A request to include context from one or more MCP servers (including the caller), to
+        be attached to the prompt.
+      `</ResponseField>`
+
+    `<ResponseField name="temperature" type="float | None">`
+        The sampling temperature.
+      `</ResponseField>`
+
+    `<ResponseField name="maxTokens" type="int">`
+        The maximum number of tokens to sample.
+      `</ResponseField>`
+
+    `<ResponseField name="stopSequences" type="list[str] | None">`
+        The stop sequences to use for sampling.
+      `</ResponseField>`
+
+    `<ResponseField name="metadata" type="dict[str, Any] | None">`
+        Optional metadata to pass through to the LLM provider.
+      `</ResponseField>`
+    `</Expandable>`
+  `</ResponseField>`
+
+<ResponseField name="RequestContext" type="Request Context Object">
+    <Expandable title="attributes">
+      <ResponseField name="request_id" type="RequestId">
+        Unique identifier for the MCP request
+      </ResponseField>
+    </Expandable>
+  </ResponseField>
+</Card>
+
+## Basic Example
+
+```python
+from fastmcp import Client
+from fastmcp.client.sampling import SamplingMessage, SamplingParams, RequestContext
+
+async def basic_sampling_handler(
+    messages: list[SamplingMessage],
+    params: SamplingParams,
+    context: RequestContext
+) -> str:
+    # Extract message content
+    conversation = []
+    for message in messages:
+        content = message.content.text if hasattr(message.content, 'text') else str(message.content)
+        conversation.append(f"{message.role}: {content}")
+
+    # Use the system prompt if provided
+    system_prompt = params.systemPrompt or "You are a helpful assistant."
+
+    # Here you would integrate with your preferred LLM service
+    # This is just a placeholder response
+    return f"Response based on conversation: {' | '.join(conversation)}"
+
+client = Client(
+    "my_mcp_server.py",
+    sampling_handler=basic_sampling_handler
+)
+```
+
+## Sampling fallback
+
+Client support for sampling is optional, if the client does not support sampling, the server will report an error indicating
+that the client does not support sampling.
+
+A `sampling_handler` can also be provided to the FastMCP server, which will be used to handle sampling requests if the client
+does not support sampling. This sampling handler bypasses the client and sends sampling requests directly to the LLM provider.
+
+Sampling handlers can be implemented using any LLM provider but a sample implementation for OpenAI is provided as a Contrib
+module. Sampling lacks the full capabilities of typical LLM completions. For this reason, the OpenAI sampling handler, pointed at
+a third-party provider's OpenAI-compatible API, is often sufficient to implement a sampling handler.
+
+```python
+import asyncio
+import os
+
+from mcp.types import ContentBlock
+from openai import OpenAI
+
+from fastmcp import FastMCP
+from fastmcp.experimental.sampling.handlers.openai import OpenAISamplingHandler
+from fastmcp.server.context import Context
+
+
+async def async_main():
+    server = FastMCP(
+        name="OpenAI Sampling Fallback Example",
+        sampling_handler=OpenAISamplingHandler(
+            default_model="gpt-4o-mini",
+            client=OpenAI(
+                api_key=os.getenv("API_KEY"),
+                base_url=os.getenv("BASE_URL"),
+            ),
+        ),
+    )
+
+    @server.tool
+    async def test_sample_fallback(ctx: Context) -> ContentBlock:
+        return await ctx.sample(
+            messages=["hello world!"],
+        )
+
+    await server.run_http_async()
+
+
+if __name__ == "__main__":
+    asyncio.run(async_main())
+```
+</file>
+
+<file path="authentication/bearer.md">
+# Bearer Token Authentication
+
+> Authenticate your FastMCP client with a Bearer token.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.6.0" />
+
+<Tip>
+  Bearer Token authentication is only relevant for HTTP-based transports.
+</Tip>
+
+You can configure your FastMCP client to use **bearer authentication** by supplying a valid access token. This is most appropriate for service accounts, long-lived API keys, CI/CD, applications where authentication is managed separately, or other non-interactive authentication methods.
+
+A Bearer token is a JSON Web Token (JWT) that is used to authenticate a request. It is most commonly used in the `Authorization` header of an HTTP request, using the `Bearer` scheme:
+
+```http
+Authorization: Bearer <token>
+```
+
+## Client Usage
+
+The most straightforward way to use a pre-existing Bearer token is to provide it as a string to the `auth` parameter of the `fastmcp.Client` or transport instance. FastMCP will automatically format it correctly for the `Authorization` header and bearer scheme.
+
+<Tip>
+  If you're using a string token, do not include the `Bearer` prefix. FastMCP will add it for you.
+</Tip>
+
+```python
+from fastmcp import Client
+
+async with Client(
+    "https://fastmcp.cloud/mcp", 
+    auth="<your-token>",
+) as client:
+    await client.ping()
+```
+
+You can also supply a Bearer token to a transport instance, such as `StreamableHttpTransport` or `SSETransport`:
+
+```python
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+transport = StreamableHttpTransport(
+    "http://fastmcp.cloud/mcp", 
+    auth="<your-token>",
+)
+
+async with Client(transport) as client:
+    await client.ping()
+```
+
+## `BearerAuth` Helper
+
+If you prefer to be more explicit and not rely on FastMCP to transform your string token, you can use the `BearerAuth` class yourself, which implements the `httpx.Auth` interface.
+
+```python
+from fastmcp import Client
+from fastmcp.client.auth import BearerAuth
+
+async with Client(
+    "https://fastmcp.cloud/mcp", 
+    auth=BearerAuth(token="<your-token>"),
+) as client:
+    await client.ping()
+```
+
+## Custom Headers
+
+If the MCP server expects a custom header or token scheme, you can manually set the client's `headers` instead of using the `auth` parameter by setting them on your transport:
+
+```python
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+
+async with Client(
+    transport=StreamableHttpTransport(
+        "https://fastmcp.cloud/mcp", 
+        headers={"X-API-Key": "<your-token>"},
+    ),
+) as client:
+    await client.ping()
+```
+</file>
+
+<file path="authentication/oauth.md">
+# OAuth Authentication
+
+> Authenticate your FastMCP client via OAuth 2.1.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.6.0" />
+
+<Tip>
+  OAuth authentication is only relevant for HTTP-based transports and requires user interaction via a web browser.
+</Tip>
+
+When your FastMCP client needs to access an MCP server protected by OAuth 2.1, and the process requires user interaction (like logging in and granting consent), you should use the Authorization Code Flow. FastMCP provides the `fastmcp.client.auth.OAuth` helper to simplify this entire process.
+
+This flow is common for user-facing applications where the application acts on behalf of the user.
+
+## Client Usage
+
+### Default Configuration
+
+The simplest way to use OAuth is to pass the string `"oauth"` to the `auth` parameter of the `Client` or transport instance. FastMCP will automatically configure the client to use OAuth with default settings:
+
+```python
+from fastmcp import Client
+
+# Uses default OAuth settings
+async with Client("https://fastmcp.cloud/mcp", auth="oauth") as client:
+    await client.ping()
+```
+
+### `OAuth` Helper
+
+To fully configure the OAuth flow, use the `OAuth` helper and pass it to the `auth` parameter of the `Client` or transport instance. `OAuth` manages the complexities of the OAuth 2.1 Authorization Code Grant with PKCE (Proof Key for Code Exchange) for enhanced security, and implements the full `httpx.Auth` interface.
+
+```python
+from fastmcp import Client
+from fastmcp.client.auth import OAuth
+
+oauth = OAuth(mcp_url="https://fastmcp.cloud/mcp")
+
+async with Client("https://fastmcp.cloud/mcp", auth=oauth) as client:
+    await client.ping()
+```
+
+#### `OAuth` Parameters
+
+* **`mcp_url`** (`str`): The full URL of the target MCP server endpoint. Used to discover OAuth server metadata
+* **`scopes`** (`str | list[str]`, optional): OAuth scopes to request. Can be space-separated string or list of strings
+* **`client_name`** (`str`, optional): Client name for dynamic registration. Defaults to `"FastMCP Client"`
+* **`token_storage_cache_dir`** (`Path`, optional): Token cache directory. Defaults to `~/.fastmcp/oauth-mcp-client-cache/`
+* **`additional_client_metadata`** (`dict[str, Any]`, optional): Extra metadata for client registration
+* **`callback_port`** (`int`, optional): Fixed port for OAuth callback server. If not specified, uses a random available port
+
+## OAuth Flow
+
+The OAuth flow is triggered when you use a FastMCP `Client` configured to use OAuth.
+
+<Steps>
+  <Step title="Token Check">
+    The client first checks the `token_storage_cache_dir` for existing, valid tokens for the target server. If one is found, it will be used to authenticate the client.
+  </Step>
+
+  `<Step title="OAuth Server Discovery">`
+    If no valid tokens exist, the client attempts to discover the OAuth server's endpoints using a well-known URI (e.g., `/.well-known/oauth-authorization-server`) based on the `mcp_url`.
+  `</Step>`
+
+  `<Step title="Dynamic Client Registration">`
+    If the OAuth server supports it and the client isn't already registered (or credentials aren't cached), the client performs dynamic client registration according to RFC 7591.
+  `</Step>`
+
+  `<Step title="Local Callback Server">`
+    A temporary local HTTP server is started on an available port (or the port specified via `callback_port`). This server's address (e.g., `http://127.0.0.1:<port>/callback`) acts as the `redirect_uri` for the OAuth flow.
+  `</Step>`
+
+  `<Step title="Browser Interaction">`
+    The user's default web browser is automatically opened, directing them to the OAuth server's authorization endpoint. The user logs in and grants (or denies) the requested `scopes`.
+  `</Step>`
+
+  `<Step title="Authorization Code & Token Exchange">`
+    Upon approval, the OAuth server redirects the user's browser to the local callback server with an `authorization_code`. The client captures this code and exchanges it with the OAuth server's token endpoint for an `access_token` (and often a `refresh_token`) using PKCE for security.
+  `</Step>`
+
+  `<Step title="Token Caching">`
+    The obtained tokens are saved to the `token_storage_cache_dir` for future use, eliminating the need for repeated browser interactions.
+  `</Step>`
+
+  `<Step title="Authenticated Requests">`
+    The access token is automatically included in the `Authorization` header for requests to the MCP server.
+  `</Step>`
+
+  `<Step title="Refresh Token">`
+    If the access token expires, the client will automatically use the refresh token to get a new access token.
+  `</Step>`
+`</Steps>`
+
+## Token Management
+
+### Token Storage
+
+OAuth access tokens are automatically cached in `~/.fastmcp/oauth-mcp-client-cache/` and persist between application runs. Files are keyed by the OAuth server's base URL.
+
+### Managing Cache
+
+To clear the tokens for a specific server, instantiate a `FileTokenStorage` instance and call the `clear` method:
+
+```python
+from fastmcp.client.auth.oauth import FileTokenStorage
+
+storage = FileTokenStorage(server_url="https://fastmcp.cloud/mcp")
+await storage.clear()
+```
+
+To clear *all* tokens for all servers, call the `clear_all` method on the `FileTokenStorage` class:
+
+```python
+from fastmcp.client.auth.oauth import FileTokenStorage
+
+FileTokenStorage.clear_all()
+```
+</file>
+
+<file path="patterns/cli.md">
+# FastMCP CLI
+
+> Learn how to use the FastMCP command-line interface
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+FastMCP provides a command-line interface (CLI) that makes it easy to run, develop, and install your MCP servers. The CLI is automatically installed when you install FastMCP.
+
+```bash
+fastmcp --help
+```
+
+## Commands Overview
+
+| Command             | Purpose                                                             | Dependency Management                                                                                                                                                                                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run`             | Run a FastMCP server directly                                       | **Supports:** Local files, factory functions, URLs, fastmcp.json configs, MCP configs. **Deps:** Uses your local environment directly. With `--python`, `--with`, `--project`, or `--with-requirements`: Runs via `uv run` subprocess. With fastmcp.json: Automatically manages dependencies based on configuration |
+| `dev`             | Run a server with the MCP Inspector for testing                     | **Supports:** Local files and fastmcp.json configs. **Deps:** Always runs via `uv run` subprocess (never uses your local environment); dependencies must be specified or available in a uv-managed project. With fastmcp.json: Uses configured dependencies                                                                 |
+| `install`         | Install a server in MCP client applications                         | **Supports:** Local files and fastmcp.json configs. **Deps:** Creates an isolated environment; dependencies must be explicitly specified with `--with` and/or `--with-editable`. With fastmcp.json: Uses configured dependencies                                                                                          |
+| `inspect`         | Generate a JSON report about a FastMCP server                       | **Supports:** Local files and fastmcp.json configs. **Deps:** Uses your current environment; you are responsible for ensuring all dependencies are available                                                                                                                                                                  |
+| `project prepare` | Create a persistent uv project from fastmcp.json environment config | **Supports:** fastmcp.json configs only. **Deps:** Creates a uv project directory with all dependencies pre-installed for reuse with `--project` flag                                                                                                                                                                       |
+| `version`         | Display version information                                         | N/A                                                                                                                                                                                                                                                                                                                                       |
+
+## `fastmcp run`
+
+Run a FastMCP server directly or proxy a remote server.
+
+```bash
+fastmcp run server.py
+```
+
+<Tip>
+  By default, this command runs the server directly in your current Python environment. You are responsible for ensuring all dependencies are available. When using `--python`, `--with`, `--project`, or `--with-requirements` options, it runs the server via `uv run` subprocess instead.
+</Tip>
+
+### Options
+
+| Option              | Flag                    | Description                                                                        |
+| ------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
+| Transport           | `--transport`, `-t` | Transport protocol to use (`stdio`, `http`, or `sse`)                        |
+| Host                | `--host`              | Host to bind to when using http transport (default: 127.0.0.1)                     |
+| Port                | `--port`, `-p`      | Port to bind to when using http transport (default: 8000)                          |
+| Path                | `--path`              | Path to bind to when using http transport (default:`/mcp/` or `/sse/` for SSE) |
+| Log Level           | `--log-level`, `-l` | Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)                                  |
+| No Banner           | `--no-banner`         | Disable the startup banner display                                                 |
+| No Environment      | `--skip-env`          | Skip environment setup with uv (use when already in a uv environment)              |
+| Python Version      | `--python`            | Python version to use (e.g., 3.10, 3.11)                                           |
+| Additional Packages | `--with`              | Additional packages to install (can be used multiple times)                        |
+| Project Directory   | `--project`           | Run the command within the given project directory                                 |
+| Requirements File   | `--with-requirements` | Requirements file to install dependencies from                                     |
+
+### Entrypoints
+
+<VersionBadge version="2.3.5" />
+
+The `fastmcp run` command supports the following entrypoints:
+
+1. **[Inferred server instance](#inferred-server-instance)**: `server.py` - imports the module and looks for a FastMCP server instance named `mcp`, `server`, or `app`. Errors if no such object is found.
+2. **[Explicit server entrypoint](#explicit-server-entrypoint)**: `server.py:custom_name` - imports and uses the specified server entrypoint
+3. **[Factory function](#factory-function)**: `server.py:create_server` - calls the specified function (sync or async) to create a server instance
+4. **[Remote server proxy](#remote-server-proxy)**: `https://example.com/mcp-server` - connects to a remote server and creates a **local proxy server**
+5. **[FastMCP configuration file](#fastmcp-configuration)**: `fastmcp.json` - runs servers using FastMCP's declarative configuration format (auto-detects files in current directory)
+6. **MCP configuration file**: `mcp.json` - runs servers defined in a standard MCP configuration file
+
+<Warning>
+  Note: When using `fastmcp run` with a local file, it **completely ignores** the `if __name__ == "__main__"` block. This means:
+
+* Any setup code in `__main__` will NOT run
+* Server configuration in `__main__` is bypassed
+* `fastmcp run` finds your server entrypoint/factory and runs it with its own transport settings
+
+  If you need setup code to run, use the **factory pattern** instead.
+`</Warning>`
+
+#### Inferred Server Instance
+
+If you provide a path to a file, `fastmcp run` will load the file and look for a FastMCP server instance stored as a variable named `mcp`, `server`, or `app`. If no such object is found, it will raise an error.
+
+For example, if you have a file called `server.py` with the following content:
+
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP("MyServer")
+```
+
+You can run it with:
+
+```bash
+fastmcp run server.py
+```
+
+#### Explicit Server Entrypoint
+
+If your server is stored as a variable with a custom name, or you want to be explicit about which server to run, you can use the following syntax to load a specific server entrypoint:
+
+```bash
+fastmcp run server.py:custom_name
+```
+
+For example, if you have a file called `server.py` with the following content:
+
+```python
+from fastmcp import FastMCP
+
+my_server = FastMCP("CustomServer")
+
+@my_server.tool
+def hello() -> str:
+    return "Hello from custom server!"
+```
+
+You can run it with:
+
+```bash
+fastmcp run server.py:custom_name
+```
+
+#### Factory Function
+
+<VersionBadge version="2.11.2" />
+
+Since `fastmcp run` ignores the `if __name__ == "__main__"` block, you can use a factory function to run setup code before your server starts. Factory functions are called without any arguments and must return a FastMCP server instance. Both sync and async factory functions are supported.
+
+The syntax for using a factory function is the same as for an explicit server entrypoint: `fastmcp run server.py:factory_fn`. FastMCP will automatically detect that you have identified a function rather than a server Instance
+
+For example, if you have a file called `server.py` with the following content:
+
+```python
+from fastmcp import FastMCP
+
+async def create_server() -> FastMCP:
+    mcp = FastMCP("MyServer")
+  
+    @mcp.tool
+    def add(x: int, y: int) -> int:
+        return x + y
+  
+    # Setup that runs with fastmcp run
+    tool = await mcp.get_tool("add")
+    tool.disable()
+  
+    return mcp
+```
+
+You can run it with:
+
+```bash
+fastmcp run server.py:create_server
+```
+
+#### Remote Server Proxy
+
+FastMCP run can also start a local proxy server that connects to a remote server. This is useful when you want to run a remote server locally for testing or development purposes, or to use with a client that doesn't support direct connections to remote servers.
+
+To start a local proxy, you can use the following syntax:
+
+```bash
+fastmcp run https://example.com/mcp
+```
+
+#### FastMCP Configuration
+
+<VersionBadge version="2.11.4" />
+
+FastMCP supports declarative configuration through `fastmcp.json` files. When you run `fastmcp run` without arguments, it automatically looks for a `fastmcp.json` file in the current directory:
+
+```bash
+# Auto-detect fastmcp.json in current directory
+fastmcp run
+
+# Or explicitly specify a configuration file
+fastmcp run my-config.fastmcp.json
+```
+
+The configuration file handles dependencies, environment variables, and transport settings. Command-line arguments override configuration file values:
+
+```bash
+# Override port from config file
+fastmcp run fastmcp.json --port 8080
+
+# Skip environment setup when already in a uv environment
+fastmcp run fastmcp.json --skip-env
+```
+
+<Note>
+  The `--skip-env` flag is useful when:
+
+* You're already in an activated virtual environment
+* You're inside a Docker container with pre-installed dependencies
+* You're in a uv-managed environment (prevents infinite recursion)
+* You want to test the server without environment setup
+  `</Note>`
+
+See [Server Configuration](/deployment/server-configuration) for detailed documentation on fastmcp.json.
+
+#### MCP Configuration
+
+FastMCP can also run servers defined in a standard MCP configuration file. This is useful when you want to run multiple servers from a single file, or when you want to use a client that doesn't support direct connections to remote servers.
+
+To run a MCP configuration file, you can use the following syntax:
+
+```bash
+fastmcp run mcp.json
+```
+
+This will run all the servers defined in the file.
+
+## `fastmcp dev`
+
+Run a MCP server with the [MCP Inspector](https://github.com/modelcontextprotocol/inspector) for testing.
+
+```bash
+fastmcp dev server.py
+```
+
+<Tip>
+  This command always runs your server via `uv run` subprocess (never your local environment) to work with the MCP Inspector. Dependencies can be:
+
+* Specified using `--with` and/or `--with-editable` options
+* Defined in a `fastmcp.json` configuration file
+* Available in a uv-managed project
+
+  When using `fastmcp.json`, the dev command automatically uses the configured dependencies.
+`</Tip>`
+
+<Warning>
+  The `dev` command is a shortcut for testing a server over STDIO only. When the Inspector launches, you may need to:
+
+1. Select "STDIO" from the transport dropdown
+2. Connect manually
+
+  This command does not support HTTP testing. To test a server over Streamable HTTP or SSE:
+
+1. Start your server manually with the appropriate transport using either the command line:
+
+   ```bash
+   fastmcp run server.py --transport http
+   ```
+
+   or by setting the transport in your code:
+   ```bash
+   python server.py  # Assuming your __main__ block sets Streamable HTTP transport
+   ```
+2. Open the MCP Inspector separately and connect to your running server
+   `</Warning>`
+
+### Options
+
+| Option              | Flag                        | Description                                                     |
+| ------------------- | --------------------------- | --------------------------------------------------------------- |
+| Editable Package    | `--with-editable`, `-e` | Directory containing pyproject.toml to install in editable mode |
+| Additional Packages | `--with`                  | Additional packages to install (can be used multiple times)     |
+| Inspector Version   | `--inspector-version`     | Version of the MCP Inspector to use                             |
+| UI Port             | `--ui-port`               | Port for the MCP Inspector UI                                   |
+| Server Port         | `--server-port`           | Port for the MCP Inspector Proxy server                         |
+| Python Version      | `--python`                | Python version to use (e.g., 3.10, 3.11)                        |
+| Project Directory   | `--project`               | Run the command within the given project directory              |
+| Requirements File   | `--with-requirements`     | Requirements file to install dependencies from                  |
+
+### Entrypoints
+
+The `dev` command supports local FastMCP server files and configuration:
+
+1. **Inferred server instance**: `server.py` - imports the module and looks for a FastMCP server instance named `mcp`, `server`, or `app`. Errors if no such object is found.
+2. **Explicit server entrypoint**: `server.py:custom_name` - imports and uses the specified server entrypoint
+3. **Factory function**: `server.py:create_server` - calls the specified function (sync or async) to create a server instance
+4. **FastMCP configuration**: `fastmcp.json` - uses FastMCP's declarative configuration (auto-detects in current directory)
+
+<Warning>
+  The `dev` command **only supports local files and fastmcp.json** - no URLs, remote servers, or standard MCP configuration files.
+</Warning>
+
+**Examples**
+
+```bash
+# Run dev server with editable mode and additional packages
+fastmcp dev server.py -e . --with pandas --with matplotlib
+
+# Run dev server with fastmcp.json configuration (auto-detects)
+fastmcp dev
+
+# Run dev server with explicit fastmcp.json file
+fastmcp dev dev.fastmcp.json
+
+# Run dev server with specific Python version
+fastmcp dev server.py --python 3.11
+
+# Run dev server with requirements file
+fastmcp dev server.py --with-requirements requirements.txt
+
+# Run dev server within a specific project directory
+fastmcp dev server.py --project /path/to/project
+```
+
+## `fastmcp install`
+
+<VersionBadge version="2.10.3" />
+
+Install a MCP server in MCP client applications. FastMCP currently supports the following clients:
+
+* **Claude Code** - Installs via Claude Code's built-in MCP management system
+* **Claude Desktop** - Installs via direct configuration file modification
+* **Cursor** - Installs via deeplink that opens Cursor for user confirmation
+* **MCP JSON** - Generates standard MCP JSON configuration for manual use
+
+```bash
+fastmcp install claude-code server.py
+fastmcp install claude-desktop server.py
+fastmcp install cursor server.py
+fastmcp install mcp-json server.py
+```
+
+Note that for security reasons, MCP clients usually run every server in a completely isolated environment. Therefore, all dependencies must be explicitly specified using the `--with` and/or `--with-editable` options (following `uv` conventions) or by attaching them to your server in code via the `dependencies` parameter. You should not assume that the MCP server will have access to your local environment.
+
+<Warning>
+  **`uv` must be installed and available in your system PATH**. Both Claude Desktop and Cursor run in isolated environments and need `uv` to manage dependencies. On macOS, install `uv` globally with Homebrew for Claude Desktop compatibility: `brew install uv`.
+</Warning>
+
+<Note>
+  **Python Version Considerations**: The install commands now support the `--python` option to specify a Python version directly. You can also use `--project` to run within a specific project directory or `--with-requirements` to install dependencies from a requirements file.
+</Note>
+
+<Tip>
+  **FastMCP `install` commands focus on local server files with STDIO transport.** For remote servers running with HTTP or SSE transport, use your client's native configuration - FastMCP's value is simplifying the complex local setup with dependencies and `uv` commands.
+</Tip>
+
+### Options
+
+| Option                | Flag                        | Description                                                                   |
+| --------------------- | --------------------------- | ----------------------------------------------------------------------------- |
+| Server Name           | `--server-name`, `-n`   | Custom name for the server (defaults to server's name attribute or file name) |
+| Editable Package      | `--with-editable`, `-e` | Directory containing pyproject.toml to install in editable mode               |
+| Additional Packages   | `--with`                  | Additional packages to install (can be used multiple times)                   |
+| Environment Variables | `--env`                   | Environment variables in KEY=VALUE format (can be used multiple times)        |
+| Environment File      | `--env-file`, `-f`      | Load environment variables from a .env file                                   |
+| Python Version        | `--python`                | Python version to use (e.g., 3.10, 3.11)                                      |
+| Project Directory     | `--project`               | Run the command within the given project directory                            |
+| Requirements File     | `--with-requirements`     | Requirements file to install dependencies from                                |
+
+### Entrypoints
+
+The `install` command supports local FastMCP server files and configuration:
+
+1. **Inferred server instance**: `server.py` - imports the module and looks for a FastMCP server instance named `mcp`, `server`, or `app`. Errors if no such object is found.
+2. **Explicit server entrypoint**: `server.py:custom_name` - imports and uses the specified server entrypoint
+3. **Factory function**: `server.py:create_server` - calls the specified function (sync or async) to create a server instance
+4. **FastMCP configuration**: `fastmcp.json` - uses FastMCP's declarative configuration with dependencies and settings
+
+<Note>
+  Factory functions are particularly useful for install commands since they allow setup code to run that would otherwise be ignored when the MCP client runs your server. When using fastmcp.json, dependencies are automatically handled.
+</Note>
+
+<Warning>
+  The `install` command **only supports local files and fastmcp.json** - no URLs, remote servers, or standard MCP configuration files. For remote servers, use your MCP client's native configuration.
+</Warning>
+
+**Examples**
+
+```bash
+# Auto-detects server entrypoint (looks for 'mcp', 'server', or 'app')
+fastmcp install claude-desktop server.py
+
+# Install with fastmcp.json configuration (auto-detects)
+fastmcp install claude-desktop
+
+# Install with explicit fastmcp.json file
+fastmcp install claude-desktop my-config.fastmcp.json
+
+# Uses specific server entrypoint
+fastmcp install claude-desktop server.py:my_server
+
+# With custom name and dependencies
+fastmcp install claude-desktop server.py:my_server --server-name "My Analysis Server" --with pandas
+
+# Install in Claude Code with environment variables
+fastmcp install claude-code server.py --env API_KEY=secret --env DEBUG=true
+
+# Install in Cursor with environment variables
+fastmcp install cursor server.py --env API_KEY=secret --env DEBUG=true
+
+# Install with environment file
+fastmcp install cursor server.py --env-file .env
+
+# Install with specific Python version
+fastmcp install claude-desktop server.py --python 3.11
+
+# Install with requirements file
+fastmcp install claude-code server.py --with-requirements requirements.txt
+
+# Install within a project directory
+fastmcp install cursor server.py --project /path/to/project
+
+# Generate MCP JSON configuration
+fastmcp install mcp-json server.py --name "My Server" --with pandas
+
+# Copy JSON configuration to clipboard
+fastmcp install mcp-json server.py --copy
+```
+
+### MCP JSON Generation
+
+The `mcp-json` subcommand generates standard MCP JSON configuration that can be used with any MCP-compatible client. This is useful when:
+
+* Working with MCP clients not directly supported by FastMCP
+* Creating configuration for CI/CD environments
+* Sharing server configurations with others
+* Integration with custom tooling
+
+The generated JSON follows the standard MCP server configuration format used by Claude Desktop, VS Code, Cursor, and other MCP clients, with the server name as the root key:
+
+```json
+{
+  "server-name": {
+    "command": "uv",
+    "args": [
+      "run",
+      "--with",
+      "fastmcp",
+      "fastmcp",
+      "run",
+      "/path/to/server.py"
+    ],
+    "env": {
+      "API_KEY": "value"
+    }
+  }
+}
+```
+
+<Note>
+  To use this configuration with your MCP client, you'll typically need to add it to the client's `mcpServers` object. Consult your client's documentation for any specific configuration requirements or formatting needs.
+</Note>
+
+**Options specific to mcp-json:**
+
+| Option            | Flag       | Description                                                   |
+| ----------------- | ---------- | ------------------------------------------------------------- |
+| Copy to Clipboard | `--copy` | Copy configuration to clipboard instead of printing to stdout |
+
+## `fastmcp inspect`
+
+<VersionBadge version="2.9.0" />
+
+Inspect a FastMCP server to view summary information or generate a detailed JSON report.
+
+```bash
+# Show text summary
+fastmcp inspect server.py
+
+# Output FastMCP JSON to stdout
+fastmcp inspect server.py --format fastmcp
+
+# Save MCP JSON to file (format required with -o)
+fastmcp inspect server.py --format mcp -o manifest.json
+```
+
+### Options
+
+| Option      | Flag                 | Description                                                                                        |
+| ----------- | -------------------- | -------------------------------------------------------------------------------------------------- |
+| Format      | `--format`, `-f` | Output format:`fastmcp` (FastMCP-specific) or `mcp` (MCP protocol). Required when using `-o` |
+| Output File | `--output`, `-o` | Save JSON report to file instead of stdout. Requires `--format`                                  |
+
+### Output Formats
+
+#### FastMCP Format (`--format fastmcp`)
+
+The default and most comprehensive format, includes all FastMCP-specific metadata:
+
+* Server name, instructions, and version
+* FastMCP version and MCP version
+* Tool tags and enabled status
+* Output schemas for tools
+* Annotations and custom metadata
+* Uses snake\_case field names
+* **Use this for**: Complete server introspection and debugging FastMCP servers
+
+#### MCP Protocol Format (`--format mcp`)
+
+Shows exactly what MCP clients will see via the protocol:
+
+* Only includes standard MCP protocol fields
+* Matches output from `client.list_tools()`, `client.list_prompts()`, etc.
+* Uses camelCase field names (e.g., `inputSchema`)
+* Excludes FastMCP-specific fields like tags and enabled status
+* **Use this for**: Debugging client visibility and ensuring MCP compatibility
+
+### Entrypoints
+
+The `inspect` command supports local FastMCP server files and configuration:
+
+1. **Inferred server instance**: `server.py` - imports the module and looks for a FastMCP server instance named `mcp`, `server`, or `app`. Errors if no such object is found.
+2. **Explicit server entrypoint**: `server.py:custom_name` - imports and uses the specified server entrypoint
+3. **Factory function**: `server.py:create_server` - calls the specified function (sync or async) to create a server instance
+4. **FastMCP configuration**: `fastmcp.json` - inspects servers defined with FastMCP's declarative configuration
+
+<Warning>
+  The `inspect` command **only supports local files and fastmcp.json** - no URLs, remote servers, or standard MCP configuration files.
+</Warning>
+
+### Examples
+
+```bash
+# Show text summary (no JSON output)
+fastmcp inspect server.py
+# Output: 
+# Server: MyServer
+# Instructions: A helpful MCP server
+# Version: 1.0.0
+#
+# Components:
+#   Tools: 5
+#   Prompts: 2
+#   Resources: 3
+#   Templates: 1
+#
+# Environment:
+#   FastMCP: 2.0.0
+#   MCP: 1.0.0
+#
+# Use --format [fastmcp|mcp] for complete JSON output
+
+# Output FastMCP format to stdout
+fastmcp inspect server.py --format fastmcp
+
+# Specify server entrypoint
+fastmcp inspect server.py:my_server
+
+# Output MCP protocol format to stdout
+fastmcp inspect server.py --format mcp
+
+# Save to file (format required)
+fastmcp inspect server.py --format fastmcp -o server-manifest.json
+
+# Save MCP format with custom server object
+fastmcp inspect server.py:my_server --format mcp -o mcp-manifest.json
+
+# Error: format required with output file
+fastmcp inspect server.py -o output.json
+# Error: --format is required when using -o/--output
+```
+
+## `fastmcp project prepare`
+
+Create a persistent uv project directory from a fastmcp.json file's environment configuration. This allows you to pre-install all dependencies once and reuse them with the `--project` flag.
+
+```bash
+fastmcp project prepare fastmcp.json --output-dir ./env
+```
+
+### Options
+
+| Option           | Flag             | Description                                                                   |
+| ---------------- | ---------------- | ----------------------------------------------------------------------------- |
+| Output Directory | `--output-dir` | **Required.** Directory where the persistent uv project will be created |
+
+### Usage Pattern
+
+```bash
+# Step 1: Prepare the environment (installs dependencies)
+fastmcp project prepare fastmcp.json --output-dir ./my-env
+
+# Step 2: Run using the prepared environment (fast, no dependency installation)
+fastmcp run fastmcp.json --project ./my-env
+```
+
+The prepare command creates a uv project with:
+
+* A `pyproject.toml` containing all dependencies from the fastmcp.json
+* A `.venv` with all packages pre-installed
+* A `uv.lock` file for reproducible environments
+
+This is useful when you want to separate environment setup from server execution, such as in deployment scenarios where dependencies are installed once and the server is run multiple times.
+
+## `fastmcp version`
+
+Display version information about FastMCP and related components.
+
+```bash
+fastmcp version
+```
+
+### Options
+
+| Option            | Flag       | Description                           |
+| ----------------- | ---------- | ------------------------------------- |
+| Copy to Clipboard | `--copy` | Copy version information to clipboard |
+</file>
+
+<file path="patterns/decorating-methods.md">
+# Decorating Methods
+
+> Properly use instance methods, class methods, and static methods with FastMCP decorators.
+
+FastMCP's decorator system is designed to work with functions, but you may see unexpected behavior if you try to decorate an instance or class method. This guide explains the correct approach for using methods with all FastMCP decorators (`@tool`, `@resource`, and `@prompt`).
+
+## Why Are Methods Hard?
+
+When you apply a FastMCP decorator like `@tool`, `@resource`, or `@prompt` to a method, the decorator captures the function at decoration time. For instance methods and class methods, this poses a challenge because:
+
+1. For instance methods: The decorator gets the unbound method before any instance exists
+2. For class methods: The decorator gets the function before it's bound to the class
+
+This means directly decorating these methods doesn't work as expected. In practice, the LLM would see parameters like `self` or `cls` that it cannot provide values for.
+
+Additionally, **FastMCP decorators return objects (Tool, Resource, or Prompt instances) rather than the original function**. This means that when you decorate a method directly, the method becomes the returned object and is no longer callable by your code:
+
+<Warning>
+  **Don't do this!**
+
+  The method will no longer be callable from Python, and the tool won't be callable by LLMs.
+
+```python
+
+  from fastmcp import FastMCP
+  mcp = FastMCP()
+
+  class MyClass:
+      @mcp.tool
+      def my_method(self, x: int) -> int:
+          return x * 2
+
+  obj = MyClass()
+  obj.my_method(5)  # Fails - my_method is a Tool, not a function
+```
+
+</Warning>
+
+This is another important reason to register methods functionally after defining the class.
+
+## Recommended Patterns
+
+### Instance Methods
+
+<Warning>
+  **Don't do this!**
+
+```python
+  from fastmcp import FastMCP
+
+  mcp = FastMCP()
+
+  class MyClass:
+      @mcp.tool  # This won't work correctly
+      def add(self, x, y):
+          return x + y
+```
+
+</Warning>
+
+When the decorator is applied this way, it captures the unbound method. When the LLM later tries to use this component, it will see `self` as a required parameter, but it won't know what to provide for it, causing errors or unexpected behavior.
+
+<Check>
+  **Do this instead**:
+
+```python
+  from fastmcp import FastMCP
+
+  mcp = FastMCP()
+
+  class MyClass:
+      def add(self, x, y):
+          return x + y
+
+  # Create an instance first, then register the bound methods
+  obj = MyClass()
+  mcp.tool(obj.add)
+
+  # Now you can call it without 'self' showing up as a parameter
+  await mcp._mcp_call_tool('add', {'x': 1, 'y': 2})  # Returns 3
+```
+
+</Check>
+
+This approach works because:
+
+1. You first create an instance of the class (`obj`)
+2. When you access the method through the instance (`obj.add`), Python creates a bound method where `self` is already set to that instance
+3. When you register this bound method, the system sees a callable that only expects the appropriate parameters, not `self`
+
+### Class Methods
+
+The behavior of decorating class methods depends on the order of decorators:
+
+<Warning>
+  **Don't do this** (decorator order matters):
+
+```python
+  from fastmcp import FastMCP
+
+  mcp = FastMCP()
+
+  class MyClass:
+      @classmethod
+      @mcp.tool  # This won't work but won't raise an error
+      def from_string_v1(cls, s):
+          return cls(s)
+    
+      @mcp.tool
+      @classmethod  # This will raise a helpful ValueError
+      def from_string_v2(cls, s):
+          return cls(s)
+```
+
+</Warning>
+
+* If `@classmethod` comes first, then `@mcp.tool`: No error is raised, but it won't work correctly
+* If `@mcp.tool` comes first, then `@classmethod`: FastMCP will detect this and raise a helpful `ValueError` with guidance
+
+<Check>
+  **Do this instead**:
+
+```python
+  from fastmcp import FastMCP
+
+  mcp = FastMCP()
+
+  class MyClass:
+      @classmethod
+      def from_string(cls, s):
+          return cls(s)
+
+  # Register the class method after the class is defined
+  mcp.tool(MyClass.from_string)
+```
+
+</Check>
+
+This works because:
+
+1. The `@classmethod` decorator is applied properly during class definition
+2. When you access `MyClass.from_string`, Python provides a special method object that automatically binds the class to the `cls` parameter
+3. When registered, only the appropriate parameters are exposed to the LLM, hiding the implementation detail of the `cls` parameter
+
+### Static Methods
+
+Static methods "work" with FastMCP decorators, but this is not recommended because the FastMCP decorator will not return a callable method. Therefore, you should register static methods the same way as other methods.
+
+<Warning>
+  **This is not recommended, though it will work.**
+
+```python
+  from fastmcp import FastMCP
+
+  mcp = FastMCP()
+
+  class MyClass:
+      @mcp.tool
+      @staticmethod
+      def utility(x, y):
+          return x + y
+```
+
+</Warning>
+
+This works because `@staticmethod` converts the method to a regular function, which the FastMCP decorator can then properly process. However, this is not recommended because the FastMCP decorator will not return a callable staticmethod. Therefore, you should register static methods the same way as other methods.
+
+<Check>
+  **Prefer this pattern:**
+
+```python
+  from fastmcp import FastMCP
+
+  mcp = FastMCP()
+
+  class MyClass:
+      @staticmethod
+      def utility(x, y):
+          return x + y
+
+  # This also works
+  mcp.tool(MyClass.utility)
+```
+
+</Check>
+
+## Additional Patterns
+
+### Creating Components at Class Initialization
+
+You can automatically register instance methods when creating an object:
+
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP()
+
+class ComponentProvider:
+    def __init__(self, mcp_instance):
+        # Register methods
+        mcp_instance.tool(self.tool_method)
+        mcp_instance.resource("resource://data")(self.resource_method)
+  
+    def tool_method(self, x):
+        return x * 2
+  
+    def resource_method(self):
+        return "Resource data"
+
+# The methods are automatically registered when creating the instance
+provider = ComponentProvider(mcp)
+```
+
+This pattern is useful when:
+
+* You want to encapsulate registration logic within the class itself
+* You have multiple related components that should be registered together
+* You want to ensure that methods are always properly registered when creating an instance
+
+The class automatically registers its methods during initialization, ensuring they're properly bound to the instance before registration.
+
+## Summary
+
+The current behavior of FastMCP decorators with methods is:
+
+* **Static methods**: Can be decorated directly and work perfectly with all FastMCP decorators
+* **Class methods**: Cannot be decorated directly and will raise a helpful `ValueError` with guidance
+* **Instance methods**: Should be registered after creating an instance using the decorator calls
+
+For class and instance methods, you should register them after creating the instance or class to ensure proper method binding. This ensures that the methods are properly bound before being registered.
+
+Understanding these patterns allows you to effectively organize your components into classes while maintaining proper method binding, giving you the benefits of object-oriented design without sacrificing the simplicity of FastMCP's decorator system.
+</file>
+
+<file path="patterns/tool-transformation.md">
+# Tool Transformation
+
+> Create enhanced tool variants with modified schemas, argument mappings, and custom behavior.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.8.0" />
+
+Tool transformation allows you to create new, enhanced tools from existing ones. This powerful feature enables you to adapt tools for different contexts, simplify complex interfaces, or add custom logic without duplicating code.
+
+## Why Transform Tools?
+
+Often, an existing tool is *almost* perfect for your use case, but it might have:
+
+* A confusing description (or no description at all).
+* Argument names or descriptions that are not intuitive for an LLM (e.g., `q` instead of `query`).
+* Unnecessary parameters that you want to hide from the LLM.
+* A need for input validation before the original tool is called.
+* A need to modify or format the tool's output.
+
+Instead of rewriting the tool from scratch, you can **transform** it to fit your needs.
+
+## Basic Transformation
+
+The primary way to create a transformed tool is with the `Tool.from_tool()` class method. At its simplest, you can use it to change a tool's top-level metadata like its `name`, `description`, or `tags`.
+
+In the following simple example, we take a generic `search` tool and adjust its name and description to help an LLM client better understand its purpose.
+
+```python
+from fastmcp import FastMCP
+from fastmcp.tools import Tool
+
+mcp = FastMCP()
+
+# The original, generic tool
+@mcp.tool
+def search(query: str, category: str = "all") -> list[dict]:
+    """Searches for items in the database."""
+    return database.search(query, category)
+
+# Create a more domain-specific version by changing its metadata
+product_search_tool = Tool.from_tool(
+    search,
+    name="find_products",
+    description="""
+        Search for products in the e-commerce catalog. 
+        Use this when customers ask about finding specific items, 
+        checking availability, or browsing product categories.
+        """,
+)
+
+mcp.add_tool(product_search_tool)
+```
+
+<Tip>
+  When you transform a tool, the original tool remains registered on the server. To avoid confusing an LLM with two similar tools, you can disable the original one:
+
+```python
+  from fastmcp import FastMCP
+  from fastmcp.tools import Tool
+
+  mcp = FastMCP()
+
+  # The original, generic tool
+  @mcp.tool
+  def search(query: str, category: str = "all") -> list[dict]:
+      ...
+
+  # Create a more domain-specific version
+  product_search_tool = Tool.from_tool(search, ...)
+  mcp.add_tool(product_search_tool)
+
+  # Disable the original tool
+  search.disable()
+```
+
+</Tip>
+
+Now, clients see a tool named `find_products` with a clear, domain-specific purpose and relevant tags, even though it still uses the original generic `search` function's logic.
+
+### Parameters
+
+The `Tool.from_tool()` class method is the primary way to create a transformed tool. It takes the following parameters:
+
+* `tool`: The tool to transform. This is the only required argument.
+* `name`: An optional name for the new tool.
+* `description`: An optional description for the new tool.
+* `transform_args`: A dictionary of `ArgTransform` objects, one for each argument you want to modify.
+* `transform_fn`: An optional function that will be called instead of the parent tool's logic.
+* `output_schema`: Control output schema and structured outputs (see [Output Schema Control](#output-schema-control)).
+* `tags`: An optional set of tags for the new tool.
+* `annotations`: An optional set of `ToolAnnotations` for the new tool.
+* `serializer`: An optional function that will be called to serialize the result of the new tool.
+* `meta`: Control meta information for the tool. Use `None` to remove meta, any dict to set meta, or leave unset to inherit from parent.
+
+The result is a new `TransformedTool` object that wraps the parent tool and applies the transformations you specify. You can add this tool to your MCP server using its `add_tool()` method.
+
+## Modifying Arguments
+
+To modify a tool's parameters, provide a dictionary of `ArgTransform` objects to the `transform_args` parameter of `Tool.from_tool()`. Each key is the name of the *original* argument you want to modify.
+
+<Tip>
+  You only need to provide a `transform_args` entry for arguments you want to modify. All other arguments will be passed through unchanged.
+</Tip>
+
+### The ArgTransform Class
+
+To modify an argument, you need to create an `ArgTransform` object. This object has the following parameters:
+
+* `name`: The new name for the argument.
+* `description`: The new description for the argument.
+* `default`: The new default value for the argument.
+* `default_factory`: A function that will be called to generate a default value for the argument. This is useful for arguments that need to be generated for each tool call, such as timestamps or unique IDs.
+* `hide`: Whether to hide the argument from the LLM.
+* `required`: Whether the argument is required, usually used to make an optional argument be required instead.
+* `type`: The new type for the argument.
+
+<Tip>
+  Certain combinations of parameters are not allowed. For example, you can only use `default_factory` with `hide=True`, because dynamic defaults cannot be represented in a JSON schema for the client. You can only set required=True for arguments that do not declare a default value.
+</Tip>
+
+### Descriptions
+
+By far the most common reason to transform a tool, after its own description, is to improve its argument descriptions. A good description is crucial for helping an LLM understand how to use a parameter correctly. This is especially important when wrapping tools from external APIs, whose argument descriptions may be missing or written for developers, not LLMs.
+
+In this example, we add a helpful description to the `user_id` argument:
+
+```python
+from fastmcp import FastMCP
+from fastmcp.tools import Tool
+from fastmcp.tools.tool_transform import ArgTransform
+
+mcp = FastMCP()
+
+@mcp.tool
+def find_user(user_id: str):
+    """Finds a user by their ID."""
+    ...
+
+new_tool = Tool.from_tool(
+    find_user,
+    transform_args={
+        "user_id": ArgTransform(
+            description=(
+                "The unique identifier for the user, "
+                "usually in the format 'usr-xxxxxxxx'."
+            )
+        )
+    }
+)
+```
+
+### Names
+
+At times, you may want to rename an argument to make it more intuitive for an LLM.
+
+For example, in the following example, we take a generic `q` argument and expand it to `search_query`:
+
+```python
+from fastmcp import FastMCP
+from fastmcp.tools import Tool
+from fastmcp.tools.tool_transform import ArgTransform
+
+mcp = FastMCP()
+
+@mcp.tool
+def search(q: str):
+    """Searches for items in the database."""
+    return database.search(q)
+
+new_tool = Tool.from_tool(
+    search,
+    transform_args={
+        "q": ArgTransform(name="search_query")
+    }
+)
+```
+
+### Default Values
+
+You can update the default value for any argument using the `default` parameter. Here, we change the default value of the `y` argument to 10:
+
+```python{15}
+from fastmcp import FastMCP
+from fastmcp.tools import Tool
+from fastmcp.tools.tool_transform import ArgTransform
+
+mcp = FastMCP()
+
+@mcp.tool
+def add(x: int, y: int) -> int:
+    """Adds two numbers."""
+    return x + y
+
+new_tool = Tool.from_tool(
+    add,
+    transform_args={
+        "y": ArgTransform(default=10)
+    }
+)
+```
+
+Default values are especially useful in combination with hidden arguments.
+
+### Hiding Arguments
+
+Sometimes a tool requires arguments that shouldn't be exposed to the LLM, such as API keys, configuration flags, or internal IDs. You can hide these parameters using `hide=True`. Note that you can only hide arguments that have a default value (or for which you provide a new default), because the LLM can't provide a value at call time.
+
+<Tip>
+  To pass a constant value to the parent tool, combine `hide=True` with `default=<value>`.
+</Tip>
+
+```python
+import os
+from fastmcp import FastMCP
+from fastmcp.tools import Tool
+from fastmcp.tools.tool_transform import ArgTransform
+
+mcp = FastMCP()
+
+@mcp.tool
+def send_email(to: str, subject: str, body: str, api_key: str):
+    """Sends an email."""
+    ...
+  
+# Create a simplified version that hides the API key
+new_tool = Tool.from_tool(
+    send_email,
+    name="send_notification",
+    transform_args={
+        "api_key": ArgTransform(
+            hide=True, 
+            default=os.environ.get("EMAIL_API_KEY"),
+        )
+    }
+)
+```
+
+The LLM now only sees the `to`, `subject`, and `body` parameters. The `api_key` is supplied automatically from an environment variable.
+
+For values that must be generated for each tool call (like timestamps or unique IDs), use `default_factory`, which is called with no arguments every time the tool is called. For example,
+
+```python
+transform_args = {
+    'timestamp': ArgTransform(
+        hide=True,
+        default_factory=lambda: datetime.now(),
+    )
+}
+```
+
+<Warning>
+  `default_factory` can only be used with `hide=True`. This is because visible parameters need static defaults that can be represented in a JSON schema for the client.
+</Warning>
+
+### Meta Information
+
+<VersionBadge version="2.11.0" />
+
+You can control meta information on transformed tools using the `meta` parameter. Meta information is additional data about the tool that doesn't affect its functionality but can be used by clients for categorization, routing, or other purposes.
+
+```python
+from fastmcp import FastMCP
+from fastmcp.tools import Tool
+
+mcp = FastMCP()
+
+@mcp.tool
+def analyze_data(data: str) -> dict:
+    """Analyzes the provided data."""
+    return {"result": f"Analysis of {data}"}
+
+# Add custom meta information
+enhanced_tool = Tool.from_tool(
+    analyze_data,
+    name="enhanced_analyzer",
+    meta={
+        "category": "analytics",
+        "priority": "high",
+        "requires_auth": True
+    }
+)
+
+mcp.add_tool(enhanced_tool)
+```
+
+You can also remove meta information entirely:
+
+```python
+# Remove meta information from parent tool
+simplified_tool = Tool.from_tool(
+    analyze_data,
+    name="simple_analyzer", 
+    meta=None  # Removes any meta information
+)
+```
+
+If you don't specify the `meta` parameter, the transformed tool inherits the parent tool's meta information.
+
+### Required Values
+
+In rare cases where you want to make an optional argument required, you can set `required=True`. This has no effect if the argument was already required.
+
+```python
+transform_args = {
+    'user_id': ArgTransform(
+        required=True,
+    )
+}
+```
+
+## Modifying Tool Behavior
+
+<Warning>
+  With great power comes great responsibility. Modifying tool behavior is a very advanced feature.
+</Warning>
+
+In addition to changing a tool's schema, advanced users can also modify its behavior. This is useful for adding validation logic, or for post-processing the tool's output.
+
+The `from_tool()` method takes a `transform_fn` parameter, which is an async function that replaces the parent tool's logic and gives you complete control over the tool's execution.
+
+### The Transform Function
+
+The `transform_fn` is an async function that **completely replaces** the parent tool's logic.
+
+Critically, the transform function's arguments are used to determine the new tool's final schema. Any arguments that are not already present in the parent tool schema OR the `transform_args` will be added to the new tool's schema. Note that when `transform_args` and your function have the same argument name, the `transform_args` metadata will take precedence, if provided.
+
+```python
+async def my_custom_logic(user_input: str, max_length: int = 100) -> str:
+    # Your custom logic here - this completely replaces the parent tool
+    return f"Custom result for: {user_input[:max_length]}"
+
+Tool.from_tool(transform_fn=my_custom_logic)
+```
+
+<Tip>
+  The name / docstring of the `transform_fn` are ignored. Only its arguments are used to determine the final schema.
+</Tip>
+
+### Calling the Parent Tool
+
+Most of the time, you don't want to completely replace the parent tool's behavior. Instead, you want to add validation, modify inputs, or post-process outputs while still leveraging the parent tool's core functionality. For this, FastMCP provides the special `forward()` and `forward_raw()` functions.
+
+Both `forward()` and `forward_raw()` are async functions that let you call the parent tool from within your `transform_fn`:
+
+* **`forward()`** (recommended): Automatically handles argument mapping based on your `ArgTransform` configurations. Call it with the transformed argument names.
+* **`forward_raw()`**: Bypasses all transformation and calls the parent tool directly with its original argument names. This is rarely needed unless you're doing complex argument manipulation, perhaps without `arg_transforms`.
+
+The most common transformation pattern is to validate (potentially renamed) arguments before calling the parent tool. Here's an example that validates that `x` and `y` are positive before calling the parent tool:
+
+<Tabs>
+  <Tab title="Using forward()">
+    In the simplest case, your parent tool and your transform function have the same arguments. You can call `forward()` with the same argument names as the parent tool:
+
+    ```python {15}
+    from fastmcp import FastMCP
+    from fastmcp.tools import Tool
+    from fastmcp.tools.tool_transform import forward
+
+    mcp = FastMCP()
+
+    @mcp.tool
+    def add(x: int, y: int) -> int:
+        """Adds two numbers."""
+        return x + y
+
+    async def ensure_positive(x: int, y: int) -> int:
+        if x <= 0 or y <= 0:
+            raise ValueError("x and y must be positive")
+        return await forward(x=x, y=y)
+
+    new_tool = Tool.from_tool(
+        add,
+        transform_fn=ensure_positive,
+    )
+
+    mcp.add_tool(new_tool)
+    ````</Tab>`
+
+  `<Tab title="Using forward() with renamed args">`
+    When your transformed tool has different argument names than the parent tool, you can call `forward()` with the renamed arguments and it will automatically map the arguments to the parent tool's arguments:
+
+    ```python {15, 20-23}
+    from fastmcp import FastMCP
+    from fastmcp.tools import Tool
+    from fastmcp.tools.tool_transform import forward
+
+    mcp = FastMCP()
+
+    @mcp.tool
+    def add(x: int, y: int) -> int:
+        """Adds two numbers."""
+        return x + y
+
+    async def ensure_positive(a: int, b: int) -> int:
+        if a <= 0 or b <= 0:
+            raise ValueError("a and b must be positive")
+        return await forward(a=a, b=b)
+
+    new_tool = Tool.from_tool(
+        add,
+        transform_fn=ensure_positive,
+        transform_args={
+            "x": ArgTransform(name="a"),
+            "y": ArgTransform(name="b"),
+        }
+    )
+
+    mcp.add_tool(new_tool)
+    ````</Tab>`
+
+  `<Tab title="Using forward_raw()">`
+    Finally, you can use `forward_raw()` to bypass all argument mapping and call the parent tool directly with its original argument names.
+
+    ```python {15, 20-23}
+    from fastmcp import FastMCP
+    from fastmcp.tools import Tool
+    from fastmcp.tools.tool_transform import forward
+
+    mcp = FastMCP()
+
+    @mcp.tool
+    def add(x: int, y: int) -> int:
+        """Adds two numbers."""
+        return x + y
+
+    async def ensure_positive(a: int, b: int) -> int:
+        if a <= 0 or b <= 0:
+            raise ValueError("a and b must be positive")
+        return await forward_raw(x=a, y=b)
+
+    new_tool = Tool.from_tool(
+        add,
+        transform_fn=ensure_positive,
+        transform_args={
+            "x": ArgTransform(name="a"),
+            "y": ArgTransform(name="b"),
+        }
+    )
+
+    mcp.add_tool(new_tool)
+    ````</Tab>`
+`</Tabs>`
+
+### Passing Arguments with \*\*kwargs
+
+If your `transform_fn` includes `**kwargs` in its signature, it will receive **all arguments from the parent tool after `ArgTransform` configurations have been applied**. This is powerful for creating flexible validation functions that don't require you to add every argument to the function signature.
+
+In the following example, we wrap a parent tool that accepts two arguments `x` and `y`. These are renamed to `a` and `b` in the transformed tool, and the transform only validates `a`, passing the other argument through as `**kwargs`.
+
+```python
+from fastmcp import FastMCP
+from fastmcp.tools import Tool
+from fastmcp.tools.tool_transform import forward
+
+mcp = FastMCP()
+
+@mcp.tool
+def add(x: int, y: int) -> int:
+    """Adds two numbers."""
+    return x + y
+
+async def ensure_a_positive(a: int, **kwargs) -> int:
+    if a <= 0:
+        raise ValueError("a must be positive")
+    return await forward(a=a, **kwargs)
+
+new_tool = Tool.from_tool(
+    add,
+    transform_fn=ensure_a_positive,
+    transform_args={
+        "x": ArgTransform(name="a"),
+        "y": ArgTransform(name="b"),
+    }
+)
+
+mcp.add_tool(new_tool)
+```
+
+<Tip>
+  In the above example, `**kwargs` receives the renamed argument `b`, not the original argument `y`. It is therefore recommended to use with `forward()`, not `forward_raw()`.
+</Tip>
+
+## Modifying MCP Tools with MCPConfig
+
+When running MCP Servers under FastMCP with `MCPConfig`, you can also apply a subset of tool transformations
+directly in the MCPConfig json file.
+
+```json
+{
+    "mcpServers": {
+        "weather": {
+            "url": "https://weather.example.com/mcp",
+            "transport": "http",
+            "tools": {
+                "weather_get_forecast": {
+                    "name": "miami_weather",
+                    "description": "Get the weather for Miami",
+                    "meta": {
+                        "category": "weather",
+                        "location": "miami"
+                    },
+                    "arguments": {
+                        "city": {
+                            "name": "city",
+                            "default": "Miami",
+                            "hide": True,
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+The `tools` section is a dictionary of tool names to tool configurations. Each tool configuration is a
+dictionary of tool properties.
+
+See the [MCPConfigTransport](/clients/transports#tool-transformation-with-fastmcp-and-mcpconfig) documentation for more details.
+
+## Output Schema Control
+
+<VersionBadge version="2.10.0" />
+
+Transformed tools inherit output schemas from their parent by default, but you can control this behavior:
+
+**Inherit from Parent (Default)**
+
+```python
+Tool.from_tool(parent_tool, name="renamed_tool")
+```
+
+The transformed tool automatically uses the parent tool's output schema and structured output behavior.
+
+**Custom Output Schema**
+
+```python
+Tool.from_tool(parent_tool, output_schema={
+    "type": "object", 
+    "properties": {"status": {"type": "string"}}
+})
+```
+
+Provide your own schema that differs from the parent. The tool must return data matching this schema.
+
+**Remove Output Schema**
+
+```python
+Tool.from_tool(parent_tool, output_schema=False)
+```
+
+Removes the output schema declaration. Automatic structured content still works for object-like returns (dict, dataclass, Pydantic models) but primitive types won't be structured.
+
+**Full Control with Transform Functions**
+
+```python
+async def custom_output(**kwargs) -> ToolResult:
+    result = await forward(**kwargs)
+    return ToolResult(content=[...], structured_content={...})
+
+Tool.from_tool(parent_tool, transform_fn=custom_output)
+```
+
+Use a transform function returning `ToolResult` for complete control over both content blocks and structured outputs.
+
+## Common Patterns
+
+Tool transformation is a flexible feature that supports many powerful patterns. Here are a few common use cases to give you ideas.
+
+### Adapting Remote or Generated Tools
+
+This is one of the most common reasons to use tool transformation. Tools from remote servers (via a [proxy](/servers/proxy)) or generated from an [OpenAPI spec](/integrations/openapi) are often too generic for direct use by an LLM. You can use transformation to create a simpler, more intuitive version for your specific needs.
+
+### Chaining Transformations
+
+You can chain transformations by using an already transformed tool as the parent for a new transformation. This lets you build up complex behaviors in layers, for example, first renaming arguments, and then adding validation logic to the renamed tool.
+
+### Context-Aware Tool Factories
+
+You can write functions that act as "factories," generating specialized versions of a tool for different contexts. For example, you could create a `get_my_data` tool that is specific to the currently logged-in user by hiding the `user_id` parameter and providing it automatically.
+</file>
+
+<file path="client-overview.md">
+# The FastMCP Client
+
+> Programmatic client for interacting with MCP servers through a well-typed, Pythonic interface.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.0.0" />
+
+The central piece of MCP client applications is the `fastmcp.Client` class. This class provides a **programmatic interface** for interacting with any Model Context Protocol (MCP) server, handling protocol details and connection management automatically.
+
+The FastMCP Client is designed for deterministic, controlled interactions rather than autonomous behavior, making it ideal for:
+
+* **Testing MCP servers** during development
+* **Building deterministic applications** that need reliable MCP interactions
+* **Creating the foundation for agentic or LLM-based clients** with structured, type-safe operations
+
+All client operations require using the `async with` context manager for proper connection lifecycle management.
+
+<Note>
+  This is not an agentic client - it requires explicit function calls and provides direct control over all MCP operations. Use it as a building block for higher-level systems.
+</Note>
+
+## Creating a Client
+
+Creating a client is straightforward. You provide a server source and the client automatically infers the appropriate transport mechanism.
+
+```python
+import asyncio
+from fastmcp import Client, FastMCP
+
+# In-memory server (ideal for testing)
+server = FastMCP("TestServer")
+client = Client(server)
+
+# HTTP server
+client = Client("https://example.com/mcp")
+
+# Local Python script
+client = Client("my_mcp_server.py")
+
+async def main():
+    async with client:
+        # Basic server interaction
+        await client.ping()
+      
+        # List available operations
+        tools = await client.list_tools()
+        resources = await client.list_resources()
+        prompts = await client.list_prompts()
+      
+        # Execute operations
+        result = await client.call_tool("example_tool", {"param": "value"})
+        print(result)
+
+asyncio.run(main())
+```
+
+## Client-Transport Architecture
+
+The FastMCP Client separates concerns between protocol and connection:
+
+* **`Client`**: Handles MCP protocol operations (tools, resources, prompts) and manages callbacks
+* **`Transport`**: Establishes and maintains the connection (WebSockets, HTTP, Stdio, in-memory)
+
+### Transport Inference
+
+The client automatically infers the appropriate transport based on the input:
+
+1. **`FastMCP` instance** → In-memory transport (perfect for testing)
+2. **File path ending in `.py`** → Python Stdio transport
+3. **File path ending in `.js`** → Node.js Stdio transport
+4. **URL starting with `http://` or `https://`** → HTTP transport
+5. **`MCPConfig` dictionary** → Multi-server client
+
+```python
+from fastmcp import Client, FastMCP
+
+# Examples of transport inference
+client_memory = Client(FastMCP("TestServer"))
+client_script = Client("./server.py") 
+client_http = Client("https://api.example.com/mcp")
+```
+
+<Tip>
+  For testing and development, always prefer the in-memory transport by passing a `FastMCP` server directly to the client. This eliminates network complexity and separate processes.
+</Tip>
+
+## Configuration-Based Clients
+
+<VersionBadge version="2.4.0" />
+
+Create clients from MCP configuration dictionaries, which can include multiple servers. While there is no official standard for MCP configuration format, FastMCP follows established conventions used by tools like Claude Desktop.
+
+### Configuration Format
+
+```python
+config = {
+    "mcpServers": {
+        "server_name": {
+            # Remote HTTP/SSE server
+            "transport": "http",  # or "sse" 
+            "url": "https://api.example.com/mcp",
+            "headers": {"Authorization": "Bearer token"},
+            "auth": "oauth"  # or bearer token string
+        },
+        "local_server": {
+            # Local stdio server
+            "transport": "stdio",
+            "command": "python",
+            "args": ["./server.py", "--verbose"],
+            "env": {"DEBUG": "true"},
+            "cwd": "/path/to/server",
+        }
+    }
+}
+```
+
+### Multi-Server Example
+
+```python
+config = {
+    "mcpServers": {
+        "weather": {"url": "https://weather-api.example.com/mcp"},
+        "assistant": {"command": "python", "args": ["./assistant_server.py"]}
+    }
+}
+
+client = Client(config)
+
+async with client:
+    # Tools are prefixed with server names
+    weather_data = await client.call_tool("weather_get_forecast", {"city": "London"})
+    response = await client.call_tool("assistant_answer_question", {"question": "What's the capital of France?"})
+  
+    # Resources use prefixed URIs
+    icons = await client.read_resource("weather://weather/icons/sunny")
+    templates = await client.read_resource("resource://assistant/templates/list")
+```
+
+## Connection Lifecycle
+
+The client operates asynchronously and uses context managers for connection management:
+
+```python
+async def example():
+    client = Client("my_mcp_server.py")
+  
+    # Connection established here
+    async with client:
+        print(f"Connected: {client.is_connected()}")
+      
+        # Make multiple calls within the same session
+        tools = await client.list_tools()
+        result = await client.call_tool("greet", {"name": "World"})
+      
+    # Connection closed automatically here
+    print(f"Connected: {client.is_connected()}")
+```
+
+## Operations
+
+FastMCP clients can interact with several types of server components:
+
+### Tools
+
+Tools are server-side functions that the client can execute with arguments.
+
+```python
+async with client:
+    # List available tools
+    tools = await client.list_tools()
+  
+    # Execute a tool
+    result = await client.call_tool("multiply", {"a": 5, "b": 3})
+    print(result.data)  # 15
+```
+
+See [Tools](/clients/tools) for detailed documentation.
+
+### Resources
+
+Resources are data sources that the client can read, either static or templated.
+
+```python
+async with client:
+    # List available resources
+    resources = await client.list_resources()
+  
+    # Read a resource
+    content = await client.read_resource("file:///config/settings.json")
+    print(content[0].text)
+```
+
+See [Resources](/clients/resources) for detailed documentation.
+
+### Prompts
+
+Prompts are reusable message templates that can accept arguments.
+
+```python
+async with client:
+    # List available prompts
+    prompts = await client.list_prompts()
+  
+    # Get a rendered prompt
+    messages = await client.get_prompt("analyze_data", {"data": [1, 2, 3]})
+    print(messages.messages)
+```
+
+See [Prompts](/clients/prompts) for detailed documentation.
+
+### Server Connectivity
+
+Use `ping()` to verify the server is reachable:
+
+```python
+async with client:
+    await client.ping()
+    print("Server is reachable")
+```
+
+## Client Configuration
+
+Clients can be configured with additional handlers and settings for specialized use cases.
+
+### Callback Handlers
+
+The client supports several callback handlers for advanced server interactions:
+
+```python
+from fastmcp import Client
+from fastmcp.client.logging import LogMessage
+
+async def log_handler(message: LogMessage):
+    print(f"Server log: {message.data}")
+
+async def progress_handler(progress: float, total: float | None, message: str | None):
+    print(f"Progress: {progress}/{total} - {message}")
+
+async def sampling_handler(messages, params, context):
+    # Integrate with your LLM service here
+    return "Generated response"
+
+client = Client(
+    "my_mcp_server.py",
+    log_handler=log_handler,
+    progress_handler=progress_handler,
+    sampling_handler=sampling_handler,
+    timeout=30.0
+)
+```
+
+The `Client` constructor accepts several configuration options:
+
+* `transport`: Transport instance or source for automatic inference
+* `log_handler`: Handle server log messages
+* `progress_handler`: Monitor long-running operations
+* `sampling_handler`: Respond to server LLM requests
+* `roots`: Provide local context to servers
+* `timeout`: Default timeout for requests (in seconds)
+
+### Transport Configuration
+
+For detailed transport configuration (headers, authentication, environment variables), see the [Transports](/clients/transports) documentation.
+
+## Next Steps
+
+Explore the detailed documentation for each operation type:
+
+### Core Operations
+
+* **[Tools](/clients/tools)** - Execute server-side functions and handle results
+* **[Resources](/clients/resources)** - Access static and templated resources
+* **[Prompts](/clients/prompts)** - Work with message templates and argument serialization
+
+### Advanced Features
+
+* **[Logging](/clients/logging)** - Handle server log messages
+* **[Progress](/clients/progress)** - Monitor long-running operations
+* **[Sampling](/clients/sampling)** - Respond to server LLM requests
+* **[Roots](/clients/roots)** - Provide local context to servers
+
+### Connection Details
+
+* **[Transports](/clients/transports)** - Configure connection methods and parameters
+* **[Authentication](/clients/auth/oauth)** - Set up OAuth and bearer token authentication
+
+<Tip>
+  The FastMCP Client is designed as a foundational tool. Use it directly for deterministic operations, or build higher-level agentic systems on top of its reliable, type-safe interface.
+</Tip>
+</file>
+
+<file path="prompts.md">
+# Prompts
+
+> Use server-side prompt templates with automatic argument serialization.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.0.0" />
+
+Prompts are reusable message templates exposed by MCP servers. They can accept arguments to generate personalized message sequences for LLM interactions.
+
+## Listing Prompts
+
+Use `list_prompts()` to retrieve all available prompt templates:
+
+```python
+async with client:
+    prompts = await client.list_prompts()
+    # prompts -> list[mcp.types.Prompt]
+  
+    for prompt in prompts:
+        print(f"Prompt: {prompt.name}")
+        print(f"Description: {prompt.description}")
+        if prompt.arguments:
+            print(f"Arguments: {[arg.name for arg in prompt.arguments]}")
+        # Access tags and other metadata
+        if hasattr(prompt, '_meta') and prompt._meta:
+            fastmcp_meta = prompt._meta.get('_fastmcp', {})
+            print(f"Tags: {fastmcp_meta.get('tags', [])}")
+```
+
+### Filtering by Tags
+
+<VersionBadge version="2.11.0" />
+
+You can use the `meta` field to filter prompts based on their tags:
+
+```python
+async with client:
+    prompts = await client.list_prompts()
+  
+    # Filter prompts by tag
+    analysis_prompts = [
+        prompt for prompt in prompts 
+        if hasattr(prompt, '_meta') and prompt._meta and
+           prompt._meta.get('_fastmcp', {}) and
+           'analysis' in prompt._meta.get('_fastmcp', {}).get('tags', [])
+    ]
+  
+    print(f"Found {len(analysis_prompts)} analysis prompts")
+```
+
+<Note>
+  The `_meta` field is part of the standard MCP specification. FastMCP servers include tags and other metadata within a `_fastmcp` namespace (e.g., `_meta._fastmcp.tags`) to avoid conflicts with user-defined metadata. This behavior can be controlled with the server's `include_fastmcp_meta` setting - when disabled, the `_fastmcp` namespace won't be included. Other MCP server implementations may not provide this metadata structure.
+</Note>
+
+## Using Prompts
+
+### Basic Usage
+
+Request a rendered prompt using `get_prompt()` with the prompt name and arguments:
+
+```python
+async with client:
+    # Simple prompt without arguments
+    result = await client.get_prompt("welcome_message")
+    # result -> mcp.types.GetPromptResult
+  
+    # Access the generated messages
+    for message in result.messages:
+        print(f"Role: {message.role}")
+        print(f"Content: {message.content}")
+```
+
+### Prompts with Arguments
+
+Pass arguments as a dictionary to customize the prompt:
+
+```python
+async with client:
+    # Prompt with simple arguments
+    result = await client.get_prompt("user_greeting", {
+        "name": "Alice",
+        "role": "administrator"
+    })
+  
+    # Access the personalized messages
+    for message in result.messages:
+        print(f"Generated message: {message.content}")
+```
+
+## Automatic Argument Serialization
+
+<VersionBadge version="2.9.0" />
+
+FastMCP automatically serializes complex arguments to JSON strings as required by the MCP specification. This allows you to pass typed objects directly:
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class UserData:
+    name: str
+    age: int
+
+async with client:
+    # Complex arguments are automatically serialized
+    result = await client.get_prompt("analyze_user", {
+        "user": UserData(name="Alice", age=30),     # Automatically serialized to JSON
+        "preferences": {"theme": "dark"},           # Dict serialized to JSON string
+        "scores": [85, 92, 78],                     # List serialized to JSON string
+        "simple_name": "Bob"                        # Strings passed through unchanged
+    })
+```
+
+The client handles serialization using `pydantic_core.to_json()` for consistent formatting. FastMCP servers can automatically deserialize these JSON strings back to the expected types.
+
+### Serialization Examples
+
+```python
+async with client:
+    result = await client.get_prompt("data_analysis", {
+        # These will be automatically serialized to JSON strings:
+        "config": {
+            "format": "csv",
+            "include_headers": True,
+            "delimiter": ","
+        },
+        "filters": [
+            {"field": "age", "operator": ">", "value": 18},
+            {"field": "status", "operator": "==", "value": "active"}
+        ],
+        # This remains a string:
+        "report_title": "Monthly Analytics Report"
+    })
+```
+
+## Working with Prompt Results
+
+The `get_prompt()` method returns a `GetPromptResult` object containing a list of messages:
+
+```python
+async with client:
+    result = await client.get_prompt("conversation_starter", {"topic": "climate"})
+  
+    # Access individual messages
+    for i, message in enumerate(result.messages):
+        print(f"Message {i + 1}:")
+        print(f"  Role: {message.role}")
+        print(f"  Content: {message.content.text if hasattr(message.content, 'text') else message.content}")
+```
+
+## Raw MCP Protocol Access
+
+For access to the complete MCP protocol objects, use the `*_mcp` methods:
+
+```python
+async with client:
+    # Raw MCP method returns full protocol object
+    prompts_result = await client.list_prompts_mcp()
+    # prompts_result -> mcp.types.ListPromptsResult
+  
+    prompt_result = await client.get_prompt_mcp("example_prompt", {"arg": "value"})
+    # prompt_result -> mcp.types.GetPromptResult
+```
+
+## Multi-Server Clients
+
+When using multi-server clients, prompts are accessible without prefixing (unlike tools):
+
+```python
+async with client:  # Multi-server client
+    # Prompts from any server are directly accessible
+    result1 = await client.get_prompt("weather_prompt", {"city": "London"})
+    result2 = await client.get_prompt("assistant_prompt", {"query": "help"})
+```
+
+## Common Prompt Patterns
+
+### System Messages
+
+Many prompts generate system messages for LLM configuration:
+
+```python
+async with client:
+    result = await client.get_prompt("system_configuration", {
+        "role": "helpful assistant",
+        "expertise": "python programming"
+    })
+  
+    # Typically returns messages with role="system"
+    system_message = result.messages[0]
+    print(f"System prompt: {system_message.content}")
+```
+
+### Conversation Templates
+
+Prompts can generate multi-turn conversation templates:
+
+```python
+async with client:
+    result = await client.get_prompt("interview_template", {
+        "candidate_name": "Alice",
+        "position": "Senior Developer"
+    })
+  
+    # Multiple messages for a conversation flow
+    for message in result.messages:
+        print(f"{message.role}: {message.content}")
+```
+
+<Tip>
+  Prompt arguments and their expected types depend on the specific prompt implementation. Check the server's documentation or use `list_prompts()` to see available arguments for each prompt.
+</Tip>
+</file>
+
+<file path="resources.md">
+# Resource Operations
+
+> Access static and templated resources from MCP servers.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.0.0" />
+
+Resources are data sources exposed by MCP servers. They can be static files or dynamic templates that generate content based on parameters.
+
+## Types of Resources
+
+MCP servers expose two types of resources:
+
+* **Static Resources**: Fixed content accessible via URI (e.g., configuration files, documentation)
+* **Resource Templates**: Dynamic resources that accept parameters to generate content (e.g., API endpoints, database queries)
+
+## Listing Resources
+
+### Static Resources
+
+Use `list_resources()` to retrieve all static resources available on the server:
+
+```python
+async with client:
+    resources = await client.list_resources()
+    # resources -> list[mcp.types.Resource]
+  
+    for resource in resources:
+        print(f"Resource URI: {resource.uri}")
+        print(f"Name: {resource.name}")
+        print(f"Description: {resource.description}")
+        print(f"MIME Type: {resource.mimeType}")
+        # Access tags and other metadata
+        if hasattr(resource, '_meta') and resource._meta:
+            fastmcp_meta = resource._meta.get('_fastmcp', {})
+            print(f"Tags: {fastmcp_meta.get('tags', [])}")
+```
+
+### Resource Templates
+
+Use `list_resource_templates()` to retrieve available resource templates:
+
+```python
+async with client:
+    templates = await client.list_resource_templates()
+    # templates -> list[mcp.types.ResourceTemplate]
+  
+    for template in templates:
+        print(f"Template URI: {template.uriTemplate}")
+        print(f"Name: {template.name}")
+        print(f"Description: {template.description}")
+        # Access tags and other metadata
+        if hasattr(template, '_meta') and template._meta:
+            fastmcp_meta = template._meta.get('_fastmcp', {})
+            print(f"Tags: {fastmcp_meta.get('tags', [])}")
+```
+
+### Filtering by Tags
+
+<VersionBadge version="2.11.0" />
+
+You can use the `meta` field to filter resources based on their tags:
+
+```python
+async with client:
+    resources = await client.list_resources()
+  
+    # Filter resources by tag
+    config_resources = [
+        resource for resource in resources 
+        if hasattr(resource, '_meta') and resource._meta and
+           resource._meta.get('_fastmcp', {}) and
+           'config' in resource._meta.get('_fastmcp', {}).get('tags', [])
+    ]
+  
+    print(f"Found {len(config_resources)} config resources")
+```
+
+<Note>
+  The `_meta` field is part of the standard MCP specification. FastMCP servers include tags and other metadata within a `_fastmcp` namespace (e.g., `_meta._fastmcp.tags`) to avoid conflicts with user-defined metadata. This behavior can be controlled with the server's `include_fastmcp_meta` setting - when disabled, the `_fastmcp` namespace won't be included. Other MCP server implementations may not provide this metadata structure.
+</Note>
+
+## Reading Resources
+
+### Static Resources
+
+Read a static resource using its URI:
+
+```python
+async with client:
+    # Read a static resource
+    content = await client.read_resource("file:///path/to/README.md")
+    # content -> list[mcp.types.TextResourceContents | mcp.types.BlobResourceContents]
+  
+    # Access text content
+    if hasattr(content[0], 'text'):
+        print(content[0].text)
+  
+    # Access binary content
+    if hasattr(content[0], 'blob'):
+        print(f"Binary data: {len(content[0].blob)} bytes")
+```
+
+### Resource Templates
+
+Read from a resource template by providing the URI with parameters:
+
+```python
+async with client:
+    # Read a resource generated from a template
+    # For example, a template like "weather://{{city}}/current"
+    weather_content = await client.read_resource("weather://london/current")
+  
+    # Access the generated content
+    print(weather_content[0].text)  # Assuming text JSON response
+```
+
+## Content Types
+
+Resources can return different content types:
+
+### Text Resources
+
+```python
+async with client:
+    content = await client.read_resource("resource://config/settings.json")
+  
+    for item in content:
+        if hasattr(item, 'text'):
+            print(f"Text content: {item.text}")
+            print(f"MIME type: {item.mimeType}")
+```
+
+### Binary Resources
+
+```python
+async with client:
+    content = await client.read_resource("resource://images/logo.png")
+  
+    for item in content:
+        if hasattr(item, 'blob'):
+            print(f"Binary content: {len(item.blob)} bytes")
+            print(f"MIME type: {item.mimeType}")
+          
+            # Save to file
+            with open("downloaded_logo.png", "wb") as f:
+                f.write(item.blob)
+```
+
+## Working with Multi-Server Clients
+
+When using multi-server clients, resource URIs are automatically prefixed with the server name:
+
+```python
+async with client:  # Multi-server client
+    # Access resources from different servers
+    weather_icons = await client.read_resource("weather://weather/icons/sunny")
+    templates = await client.read_resource("resource://assistant/templates/list")
+  
+    print(f"Weather icon: {weather_icons[0].blob}")
+    print(f"Templates: {templates[0].text}")
+```
+
+## Raw MCP Protocol Access
+
+For access to the complete MCP protocol objects, use the `*_mcp` methods:
+
+```python
+async with client:
+    # Raw MCP methods return full protocol objects
+    resources_result = await client.list_resources_mcp()
+    # resources_result -> mcp.types.ListResourcesResult
+  
+    templates_result = await client.list_resource_templates_mcp()
+    # templates_result -> mcp.types.ListResourceTemplatesResult
+  
+    content_result = await client.read_resource_mcp("resource://example")
+    # content_result -> mcp.types.ReadResourceResult
+```
+
+## Common Resource URI Patterns
+
+Different MCP servers may use various URI schemes:
+
+```python
+# File system resources
+"file:///path/to/file.txt"
+
+# Custom protocol resources  
+"weather://london/current"
+"database://users/123"
+
+# Generic resource protocol
+"resource://config/settings"
+"resource://templates/email"
+```
+
+<Tip>
+  Resource URIs and their formats depend on the specific MCP server implementation. Check the server's documentation for available resources and their URI patterns.
+</Tip>
+</file>
+
+<file path="tools.md">
+# Tool Operations
+
+> Discover and execute server-side tools with the FastMCP client.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.0.0" />
+
+Tools are executable functions exposed by MCP servers. The FastMCP client provides methods to discover available tools and execute them with arguments.
+
+## Discovering Tools
+
+Use `list_tools()` to retrieve all tools available on the server:
+
+```python
+async with client:
+    tools = await client.list_tools()
+    # tools -> list[mcp.types.Tool]
+  
+    for tool in tools:
+        print(f"Tool: {tool.name}")
+        print(f"Description: {tool.description}")
+        if tool.inputSchema:
+            print(f"Parameters: {tool.inputSchema}")
+        # Access tags and other metadata
+        if hasattr(tool, 'meta') and tool.meta:
+            fastmcp_meta = tool.meta.get('_fastmcp', {})
+            print(f"Tags: {fastmcp_meta.get('tags', [])}")
+```
+
+### Filtering by Tags
+
+<VersionBadge version="2.11.0" />
+
+You can use the `meta` field to filter tools based on their tags:
+
+```python
+async with client:
+    tools = await client.list_tools()
+  
+    # Filter tools by tag
+    analysis_tools = [
+        tool for tool in tools 
+        if hasattr(tool, 'meta') and tool.meta and
+           tool.meta.get('_fastmcp', {}) and
+           'analysis' in tool.meta.get('_fastmcp', {}).get('tags', [])
+    ]
+  
+    print(f"Found {len(analysis_tools)} analysis tools")
+```
+
+<Note>
+  The `meta` field is part of the standard MCP specification. FastMCP servers include tags and other metadata within a `_fastmcp` namespace (e.g., `meta._fastmcp.tags`) to avoid conflicts with user-defined metadata. This behavior can be controlled with the server's `include_fastmcp_meta` setting - when disabled, the `_fastmcp` namespace won't be included. Other MCP server implementations may not provide this metadata structure.
+</Note>
+
+## Executing Tools
+
+### Basic Execution
+
+Execute a tool using `call_tool()` with the tool name and arguments:
+
+```python
+async with client:
+    # Simple tool call
+    result = await client.call_tool("add", {"a": 5, "b": 3})
+    # result -> CallToolResult with structured and unstructured data
+  
+    # Access structured data (automatically deserialized)
+    print(result.data)  # 8 (int) or {"result": 8} for primitive types
+  
+    # Access traditional content blocks  
+    print(result.content[0].text)  # "8" (TextContent)
+```
+
+### Advanced Execution Options
+
+The `call_tool()` method supports additional parameters for timeout control and progress monitoring:
+
+```python
+async with client:
+    # With timeout (aborts if execution takes longer than 2 seconds)
+    result = await client.call_tool(
+        "long_running_task", 
+        {"param": "value"}, 
+        timeout=2.0
+    )
+  
+    # With progress handler (to track execution progress)
+    result = await client.call_tool(
+        "long_running_task",
+        {"param": "value"},
+        progress_handler=my_progress_handler
+    )
+```
+
+**Parameters:**
+
+* `name`: The tool name (string)
+* `arguments`: Dictionary of arguments to pass to the tool (optional)
+* `timeout`: Maximum execution time in seconds (optional, overrides client-level timeout)
+* `progress_handler`: Progress callback function (optional, overrides client-level handler)
+
+## Handling Results
+
+<VersionBadge version="2.10.0" />
+
+Tool execution returns a `CallToolResult` object with both structured and traditional content. FastMCP's standout feature is the `.data` property, which doesn't just provide raw JSON but actually hydrates complete Python objects including complex types like datetimes, UUIDs, and custom classes.
+
+### CallToolResult Properties
+
+<Card icon="code" title="CallToolResult Properties">
+  <ResponseField name=".data" type="Any">
+    **FastMCP exclusive**: Fully hydrated Python objects with complex type support (datetimes, UUIDs, custom classes). Goes beyond JSON to provide complete object reconstruction from output schemas.
+  </ResponseField>
+
+<ResponseField name=".content" type="list[mcp.types.ContentBlock]">
+    Standard MCP content blocks (`TextContent`, `ImageContent`, `AudioContent`, etc.) available from all MCP servers.
+  </ResponseField>
+
+<ResponseField name=".structured_content" type="dict[str, Any] | None">
+    Standard MCP structured JSON data as sent by the server, available from all MCP servers that support structured outputs.
+  </ResponseField>
+
+<ResponseField name=".is_error" type="bool">
+    Boolean indicating if the tool execution failed.
+  </ResponseField>
+</Card>
+
+### Structured Data Access
+
+FastMCP's `.data` property provides fully hydrated Python objects, not just JSON dictionaries. This includes complex type reconstruction:
+
+```python
+from datetime import datetime
+from uuid import UUID
+
+async with client:
+    result = await client.call_tool("get_weather", {"city": "London"})
+  
+    # FastMCP reconstructs complete Python objects from the server's output schema
+    weather = result.data  # Server-defined WeatherReport object
+    print(f"Temperature: {weather.temperature}°C at {weather.timestamp}")
+    print(f"Station: {weather.station_id}")
+    print(f"Humidity: {weather.humidity}%")
+  
+    # The timestamp is a real datetime object, not a string!
+    assert isinstance(weather.timestamp, datetime)
+    assert isinstance(weather.station_id, UUID)
+  
+    # Compare with raw structured JSON (standard MCP)
+    print(f"Raw JSON: {result.structured_content}")
+    # {"temperature": 20, "timestamp": "2024-01-15T14:30:00Z", "station_id": "123e4567-..."}
+  
+    # Traditional content blocks (standard MCP)  
+    print(f"Text content: {result.content[0].text}")
+```
+
+### Fallback Behavior
+
+For tools without output schemas or when deserialization fails, `.data` will be `None`:
+
+```python
+async with client:
+    result = await client.call_tool("legacy_tool", {"param": "value"})
+  
+    if result.data is not None:
+        # Structured output available and successfully deserialized
+        print(f"Structured: {result.data}")
+    else:
+        # No structured output or deserialization failed - use content blocks
+        for content in result.content:
+            if hasattr(content, 'text'):
+                print(f"Text result: {content.text}")
+            elif hasattr(content, 'data'):
+                print(f"Binary data: {len(content.data)} bytes")
+```
+
+### Primitive Type Unwrapping
+
+<Tip>
+  FastMCP servers automatically wrap non-object results (like `int`, `str`, `bool`) in a `{"result": value}` structure to create valid structured outputs. FastMCP clients understand this convention and automatically unwrap the value in `.data` for convenience, so you get the original primitive value instead of a wrapper object.
+</Tip>
+
+```python
+async with client:
+    result = await client.call_tool("calculate_sum", {"a": 5, "b": 3})
+  
+    # FastMCP client automatically unwraps for convenience
+    print(result.data)  # 8 (int) - the original value
+  
+    # Raw structured content shows the server-side wrapping
+    print(result.structured_content)  # {"result": 8}
+  
+    # Other MCP clients would need to manually access ["result"]
+    # value = result.structured_content["result"]  # Not needed with FastMCP!
+```
+
+## Error Handling
+
+### Exception-Based Error Handling
+
+By default, `call_tool()` raises a `ToolError` if the tool execution fails:
+
+```python
+from fastmcp.exceptions import ToolError
+
+async with client:
+    try:
+        result = await client.call_tool("potentially_failing_tool", {"param": "value"})
+        print("Tool succeeded:", result.data)
+    except ToolError as e:
+        print(f"Tool failed: {e}")
+```
+
+### Manual Error Checking
+
+You can disable automatic error raising and manually check the result:
+
+```python
+async with client:
+    result = await client.call_tool(
+        "potentially_failing_tool", 
+        {"param": "value"}, 
+        raise_on_error=False
+    )
+  
+    if result.is_error:
+        print(f"Tool failed: {result.content[0].text}")
+    else:
+        print(f"Tool succeeded: {result.data}")
+```
+
+### Raw MCP Protocol Access
+
+For complete control, use `call_tool_mcp()` which returns the raw MCP protocol object:
+
+```python
+async with client:
+    result = await client.call_tool_mcp("potentially_failing_tool", {"param": "value"})
+    # result -> mcp.types.CallToolResult
+  
+    if result.isError:
+        print(f"Tool failed: {result.content}")
+    else:
+        print(f"Tool succeeded: {result.content}")
+        # Note: No automatic deserialization with call_tool_mcp()
+```
+
+## Argument Handling
+
+Arguments are passed as a dictionary to the tool:
+
+```python
+async with client:
+    # Simple arguments
+    result = await client.call_tool("greet", {"name": "World"})
+  
+    # Complex arguments
+    result = await client.call_tool("process_data", {
+        "config": {"format": "json", "validate": True},
+        "items": [1, 2, 3, 4, 5],
+        "metadata": {"source": "api", "version": "1.0"}
+    })
+```
+
+<Tip>
+  For multi-server clients, tool names are automatically prefixed with the server name (e.g., `weather_get_forecast` for a tool named `get_forecast` on the `weather` server).
+</Tip>
+</file>
+
+<file path="transports.md">
+# Client Transports
+
+> Configure how FastMCP Clients connect to and communicate with servers.
+
+export const VersionBadge = ({version}) => {
+  return `<code className="version-badge-container">`
+            `<p className="version-badge">`
+                `<span className="version-badge-label">`New in version: 
+                `<code className="version-badge-version">`{version}`</code>`
+            `</p>`
+        `</code>`;
+};
+
+<VersionBadge version="2.0.0" />
+
+The FastMCP `Client` communicates with MCP servers through transport objects that handle the underlying connection mechanics. While the client can automatically select a transport based on what you pass to it, instantiating transports explicitly gives you full control over configuration—environment variables, authentication, session management, and more.
+
+Think of transports as configurable adapters between your client code and MCP servers. Each transport type handles a different communication pattern: subprocesses with pipes, HTTP connections, or direct in-memory calls.
+
+## Choosing the Right Transport
+
+* **Use [STDIO Transport](#stdio-transport)** when you need to run local MCP servers with full control over their environment and lifecycle
+* **Use [Remote Transports](#remote-transports)** when connecting to production services or shared MCP servers running independently
+* **Use [In-Memory Transport](#in-memory-transport)** for testing FastMCP servers without subprocess or network overhead
+* **Use [MCP JSON Configuration](#mcp-json-configuration-transport)** when you need to connect to multiple servers defined in configuration files
+
+## STDIO Transport
+
+STDIO (Standard Input/Output) transport communicates with MCP servers through subprocess pipes. This is the standard mechanism used by desktop clients like Claude Desktop and is the primary way to run local MCP servers.
+
+### The Client Runs the Server
+
+<Warning>
+  **Critical Concept**: When using STDIO transport, your client actually launches and manages the server process. This is fundamentally different from network transports where you connect to an already-running server. Understanding this relationship is key to using STDIO effectively.
+</Warning>
+
+With STDIO transport, your client:
+
+* Starts the server as a subprocess when you connect
+* Manages the server's lifecycle (start, stop, restart)
+* Controls the server's environment and configuration
+* Communicates through stdin/stdout pipes
+
+This architecture enables powerful local integrations but requires understanding environment isolation and process management.
+
+### Environment Isolation
+
+STDIO servers run in isolated environments by default. This is a security feature enforced by the MCP protocol to prevent accidental exposure of sensitive data.
+
+When your client launches an MCP server:
+
+* The server does NOT inherit your shell's environment variables
+* API keys, paths, and other configuration must be explicitly passed
+* The working directory and system paths may differ from your shell
+
+To pass environment variables to your server, use the `env` parameter:
+
+```python
+from fastmcp import Client
+
+# If your server needs environment variables (like API keys),
+# you must explicitly pass them:
+client = Client(
+    "my_server.py",
+    env={"API_KEY": "secret", "DEBUG": "true"}
+)
+
+# This won't work - the server runs in isolation:
+# export API_KEY="secret"  # in your shell
+# client = Client("my_server.py")  # server can't see API_KEY
+```
+
+### Basic Usage
+
+To use STDIO transport, you create a transport instance with the command and arguments needed to run your server:
+
+```python
+from fastmcp.client.transports import StdioTransport
+
+transport = StdioTransport(
+    command="python",
+    args=["my_server.py"]
+)
+client = Client(transport)
+```
+
+You can configure additional settings like environment variables, working directory, or command arguments:
+
+```python
+transport = StdioTransport(
+    command="python",
+    args=["my_server.py", "--verbose"],
+    env={"LOG_LEVEL": "DEBUG"},
+    cwd="/path/to/server"
+)
+client = Client(transport)
+```
+
+For convenience, the client can also infer STDIO transport from file paths, but this doesn't allow configuration:
+
+```python
+from fastmcp import Client
+
+client = Client("my_server.py")  # Limited - no configuration options
+```
+
+### Environment Variables
+
+Since STDIO servers don't inherit your environment, you need strategies for passing configuration. Here are two common approaches:
+
+**Selective forwarding** passes only the variables your server actually needs:
+
+```python
+import os
+from fastmcp.client.transports import StdioTransport
+
+required_vars = ["API_KEY", "DATABASE_URL", "REDIS_HOST"]
+env = {
+    var: os.environ[var] 
+    for var in required_vars 
+    if var in os.environ
+}
+
+transport = StdioTransport(
+    command="python",
+    args=["server.py"],
+    env=env
+)
+client = Client(transport)
+```
+
+**Loading from .env files** keeps configuration separate from code:
+
+```python
+from dotenv import dotenv_values
+from fastmcp.client.transports import StdioTransport
+
+env = dotenv_values(".env")
+transport = StdioTransport(
+    command="python",
+    args=["server.py"],
+    env=env
+)
+client = Client(transport)
+```
+
+### Session Persistence
+
+STDIO transports maintain sessions across multiple client contexts by default (`keep_alive=True`). This improves performance by reusing the same subprocess for multiple connections, but can be controlled when you need isolation.
+
+By default, the subprocess persists between connections:
+
+```python
+from fastmcp.client.transports import StdioTransport
+
+transport = StdioTransport(
+    command="python",
+    args=["server.py"]
+)
+client = Client(transport)
+
+async def efficient_multiple_operations():
+    async with client:
+        await client.ping()
+  
+    async with client:  # Reuses the same subprocess
+        await client.call_tool("process_data", {"file": "data.csv"})
+```
+
+For complete isolation between connections, disable session persistence:
+
+```python
+transport = StdioTransport(
+    command="python",
+    args=["server.py"],
+    keep_alive=False
+)
+client = Client(transport)
+```
+
+Use `keep_alive=False` when you need complete isolation (e.g., in test suites) or when server state could cause issues between connections.
+
+### Specialized STDIO Transports
+
+FastMCP provides convenience transports that are thin wrappers around `StdioTransport` with pre-configured commands:
+
+* **`PythonStdioTransport`** - Uses `python` command for `.py` files
+* **`NodeStdioTransport`** - Uses `node` command for `.js` files
+* **`UvStdioTransport`** - Uses `uv` for Python packages (uses `env_vars` parameter)
+* **`UvxStdioTransport`** - Uses `uvx` for Python packages (uses `env_vars` parameter)
+* **`NpxStdioTransport`** - Uses `npx` for Node packages (uses `env_vars` parameter)
+
+For most use cases, instantiate `StdioTransport` directly with your desired command. These specialized transports are primarily useful for client inference shortcuts.
+
+## Remote Transports
+
+Remote transports connect to MCP servers running as web services. This is a fundamentally different model from STDIO transports—instead of your client launching and managing a server process, you connect to an already-running service that manages its own environment and lifecycle.
+
+### Streamable HTTP Transport
+
+<VersionBadge version="2.3.0" />
+
+Streamable HTTP is the recommended transport for production deployments, providing efficient bidirectional streaming over HTTP connections.
+
+* **Class:** `StreamableHttpTransport`
+* **Server compatibility:** FastMCP servers running with `mcp run --transport http`
+
+The transport requires a URL and optionally supports custom headers for authentication and configuration:
+
+```python
+from fastmcp.client.transports import StreamableHttpTransport
+
+# Basic connection
+transport = StreamableHttpTransport(url="https://api.example.com/mcp")
+client = Client(transport)
+
+# With custom headers for authentication
+transport = StreamableHttpTransport(
+    url="https://api.example.com/mcp",
+    headers={
+        "Authorization": "Bearer your-token-here",
+        "X-Custom-Header": "value"
+    }
+)
+client = Client(transport)
+```
+
+For convenience, FastMCP also provides authentication helpers:
+
+```python
+from fastmcp.client.auth import BearerAuth
+
+client = Client(
+    "https://api.example.com/mcp",
+    auth=BearerAuth("your-token-here")
+)
+```
+
+### SSE Transport (Legacy)
+
+Server-Sent Events transport is maintained for backward compatibility but is superseded by Streamable HTTP for new deployments.
+
+* **Class:** `SSETransport`
+* **Server compatibility:** FastMCP servers running with `mcp run --transport sse`
+
+SSE transport supports the same configuration options as Streamable HTTP:
+
+```python
+from fastmcp.client.transports import SSETransport
+
+transport = SSETransport(
+    url="https://api.example.com/sse",
+    headers={"Authorization": "Bearer token"}
+)
+client = Client(transport)
+```
+
+Use Streamable HTTP for new deployments unless you have specific infrastructure requirements for SSE.
+
+## In-Memory Transport
+
+In-memory transport connects directly to a FastMCP server instance within the same Python process. This eliminates both subprocess management and network overhead, making it ideal for testing and development.
+
+* **Class:** `FastMCPTransport`
+
+<Note>
+  Unlike STDIO transports, in-memory servers have full access to your Python process's environment. They share the same memory space and environment variables as your client code—no isolation or explicit environment passing required.
+</Note>
+
+```python
+from fastmcp import FastMCP, Client
+import os
+
+mcp = FastMCP("TestServer")
+
+@mcp.tool
+def greet(name: str) -> str:
+    prefix = os.environ.get("GREETING_PREFIX", "Hello")
+    return f"{prefix}, {name}!"
+
+client = Client(mcp)
+
+async with client:
+    result = await client.call_tool("greet", {"name": "World"})
+```
+
+## MCP JSON Configuration Transport
+
+<VersionBadge version="2.4.0" />
+
+This transport supports the emerging MCP JSON configuration standard for defining multiple servers:
+
+* **Class:** `MCPConfigTransport`
+
+```python
+config = {
+    "mcpServers": {
+        "weather": {
+            "url": "https://weather.example.com/mcp",
+            "transport": "http"
+        },
+        "assistant": {
+            "command": "python",
+            "args": ["./assistant.py"],
+            "env": {"LOG_LEVEL": "INFO"}
+        }
+    }
+}
+
+client = Client(config)
+
+async with client:
+    # Tools are namespaced by server
+    weather = await client.call_tool("weather_get_forecast", {"city": "NYC"})
+    answer = await client.call_tool("assistant_ask", {"question": "What?"})
+```
+
+### Tool Transformation with FastMCP and MCPConfig
+
+FastMCP supports basic tool transformations to be defined alongside the MCP Servers in the MCPConfig file.
+
+```python
+config = {
+    "mcpServers": {
+        "weather": {
+            "url": "https://weather.example.com/mcp",
+            "transport": "http",
+            "tools": { }   #  <--- This is the tool transformation section
+        }
+    }
+}
+```
+
+With these transformations, you can transform (change) the name, title, description, tags, enablement, and arguments of a tool.
+
+For each argument the tool takes, you can transform (change) the name, description, default, visibility, whether it's required, and you can provide example values.
+
+In the following example, we're transforming the `weather_get_forecast` tool to only retrieve the weather for `Miami` and hiding the `city` argument from the client.
+
+```python
+tool_transformations = {
+    "weather_get_forecast": {
+        "name": "miami_weather",
+        "description": "Get the weather for Miami",
+        "arguments": {
+            "city": {
+                "name": "city",
+                "default": "Miami",
+                "hide": True,
+            }
+        }
+    }
+}
+
+config = {
+    "mcpServers": {
+        "weather": {
+            "url": "https://weather.example.com/mcp",
+            "transport": "http",
+            "tools": tool_transformations
+        }
+    }
+}
+```
+
+#### Allowlisting and Blocklisting Tools
+
+Tools can be allowlisted or blocklisted from the client by applying `tags` to the tools on the server. In the following example, we're allowlisting only tools marked with the `forecast` tag, all other tools will be unavailable to the client.
+
+```python
+tool_transformations = {
+    "weather_get_forecast": {
+        "enabled": True,
+        "tags": ["forecast"]
+    }
+}
+
+
+config = {
+    "mcpServers": {
+        "weather": {
+            "url": "https://weather.example.com/mcp",
+            "transport": "http",
+            "tools": tool_transformations,
+            "include_tags": ["forecast"]
+        }
+    }
+}
+```
+</file>
+
+</files>
