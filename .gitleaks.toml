@@ -1,0 +1,43 @@
+[allowlist]
+  description = "Project-specific allowlist for false positives"
+
+  # Ignore based on file paths
+  paths = [
+    # Example files
+    '''\/example.*\.(pem|key)$''',
+    '''\/examples\/''',
+    '''\.example$''',
+    '''\.sample$''',
+
+    # Test fixtures
+    '''\/tests?\/fixtures\/''',
+    '''\/test\/.*\.(key|pem)$''',
+
+    # Documentation
+    '''README\.md$''',
+    '''docs\/.*\.md$''',
+    '''TESTING_GUIDE\.md$''',
+    '''project-management\/.*\.md$''',
+    '''fastmcp-.*-docs\/.*\.md$''',
+  ]
+
+  # Ignore based on line content
+  regexes = [
+    # Test/example passwords
+    '''password.*['"]\s*['"]\s*$''',
+    '''password.*Pass123''',
+    '''password.*example''',
+
+    # Documentation placeholders
+    '''# Your (private key|certificate) here''',
+    '''<your-.*-here>''',
+    '''REPLACE_WITH_YOUR''',
+    '''YOUR_.*_HERE''',
+    '''REDACTED''',
+
+    # Common documentation examples
+    '''example\.com''',
+    '''example-.*-key''',
+    '''dummy.*key''',
+    '''test.*password''',
+  ]

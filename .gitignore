@@ -51,9 +51,24 @@ dmypy.json
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Environment variables
+# Environment variables and secrets
 .env
 .env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.json
+secrets.yaml
+secrets.yml
+
+# API keys and tokens
+*_key.txt
+*_token.txt
+*_secret.txt
+api_keys.txt
+tokens.txt
 
 # OS
 .DS_Store
