@@ -66,7 +66,9 @@ def setup_json_logging() -> None:
             return json.dumps(log_obj)
 
     # Configure root logger
-    handler = logging.StreamHandler(sys.stdout)
+    # IMPORTANT: Use stderr for logging to avoid interfering with stdio transport
+    # which uses stdout for JSON-RPC protocol messages
+    handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(JsonFormatter())
 
     root_logger = logging.getLogger()
@@ -99,7 +101,7 @@ async def health_check(ctx: Context) -> Dict[str, Any]:
     return {
         "status": "healthy",
         "server": "mcp-test-mcp",
-        "version": "0.1.0",
+        "version": "0.1.2",
         "transport": "stdio"
     }
 
