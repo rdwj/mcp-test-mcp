@@ -20,11 +20,10 @@ from fastmcp import Context, FastMCP
 env_path = Path(__file__).parent.parent.parent / ".env"
 if env_path.exists():
     load_dotenv(env_path)
-    logging.info(f"Loaded environment variables from {env_path}")
 else:
     # Try current directory as fallback
     load_dotenv()
-    logging.info("Attempted to load .env from current directory")
+# Note: Don't log here - logging isn't set up yet and would go to stdout
 
 # Import tool functions
 from .tools.connection import connect_to_server, disconnect, get_connection_status
@@ -85,7 +84,9 @@ logger = logging.getLogger(__name__)
 # Create FastMCP server instance
 mcp = FastMCP(name="mcp-test-mcp")
 
-logger.info("FastMCP server instance created", extra={"server_name": "mcp-test-mcp"})
+# Note: Logging during module import can interfere with stdio transport
+# Only log at DEBUG level to avoid corrupting JSON-RPC protocol on stdout
+logger.debug("FastMCP server instance created", extra={"server_name": "mcp-test-mcp"})
 
 
 @mcp.tool()
@@ -101,7 +102,7 @@ async def health_check(ctx: Context) -> Dict[str, Any]:
     return {
         "status": "healthy",
         "server": "mcp-test-mcp",
-        "version": "0.1.2",
+        "version": "0.1.5",
         "transport": "stdio"
     }
 
@@ -171,7 +172,9 @@ mcp.tool(get_prompt)
 # Register LLM integration tools
 mcp.tool(execute_prompt_with_llm)
 
-logger.info("MCP tools registered", extra={
+# Note: Logging during module import can interfere with stdio transport
+# Only log at DEBUG level to avoid corrupting JSON-RPC protocol on stdout
+logger.debug("MCP tools registered", extra={
     "tools": [
         "health_check", "ping", "echo", "add",
         "connect_to_server", "disconnect", "get_connection_status",

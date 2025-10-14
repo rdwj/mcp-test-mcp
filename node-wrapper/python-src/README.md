@@ -115,7 +115,28 @@ source venv/bin/activate
 pip install mcp-test-mcp
 ```
 
-### Using uv (Recommended for Quick Setup)
+### Using npm (Easiest - Recommended for Most Users)
+
+The simplest way to install mcp-test-mcp is via npm/npx:
+
+```bash
+# No installation needed! Use directly with npx
+npx mcp-test-mcp
+
+# Or install globally
+npm install -g mcp-test-mcp
+```
+
+**Prerequisites:**
+- Node.js 16+ (for npx)
+- Python 3.11+ (automatically detected during installation)
+
+The npm package automatically:
+1. Checks for Python 3.11+ on your system
+2. Creates a virtual environment
+3. Installs all Python dependencies
+
+### Using uv (Alternative Quick Setup)
 
 [uv](https://github.com/astral-sh/uv) is a fast Python package installer and runner. With the project on GitHub, you can run mcp-test-mcp directly without cloning:
 
@@ -238,6 +259,42 @@ You have several options for configuring mcp-test-mcp with uv in Claude Code/Des
 ### Claude Code Configuration
 
 Add mcp-test-mcp to your Claude Code MCP settings (typically in `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%/Claude/claude_desktop_config.json` on Windows):
+
+**Using npm/npx (Easiest - Recommended)**
+
+*Basic configuration:*
+```json
+{
+  "mcpServers": {
+    "mcp-test-mcp": {
+      "command": "npx",
+      "args": ["-y", "mcp-test-mcp"]
+    }
+  }
+}
+```
+
+*With LLM integration (optional):*
+```json
+{
+  "mcpServers": {
+    "mcp-test-mcp": {
+      "command": "npx",
+      "args": ["-y", "mcp-test-mcp"],
+      "env": {
+        "LLM_URL": "https://your-llm-endpoint.com/v1",
+        "LLM_MODEL_NAME": "your-model-name",
+        "LLM_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+**Using Claude Code CLI:**
+```bash
+claude mcp add mcp-test-mcp -- npx -y mcp-test-mcp
+```
 
 **Using standard Python (pip install)**
 

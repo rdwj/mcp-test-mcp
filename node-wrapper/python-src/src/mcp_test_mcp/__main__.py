@@ -10,6 +10,12 @@ or when using the installed console script:
 
 from mcp_test_mcp.server import mcp
 
-if __name__ == "__main__":
+
+def main() -> None:
+    """Main entry point for the MCP server."""
     # Uses stdio transport by default
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

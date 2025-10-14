@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-test-mcp"
-version = "0.1.2"
+version = "0.1.5"
 description = "A test MCP server implementation using FastMCP v2"
 readme = "README.md"
 requires-python = ">=3.11"

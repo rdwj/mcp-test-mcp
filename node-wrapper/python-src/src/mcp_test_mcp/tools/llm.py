@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 async def execute_prompt_with_llm(
     prompt_name: str,
-    prompt_arguments: dict[str, Any] | None = None,
-    fill_variables: dict[str, Any] | None = None,
-    llm_config: dict[str, Any] | None = None,
+    prompt_arguments: dict[str, Any] | str | None = None,
+    fill_variables: dict[str, Any] | str | None = None,
+    llm_config: dict[str, Any] | str | None = None,
 ) -> dict[str, Any]:
     """Execute a prompt with an LLM and return the response.
 
@@ -68,6 +68,52 @@ async def execute_prompt_with_llm(
     start_time = time.perf_counter()
 
     try:
+        # Parse JSON string parameters if needed
+        if isinstance(prompt_arguments, str):
+            try:
+                prompt_arguments = json.loads(prompt_arguments)
+            except json.JSONDecodeError as e:
+                return {
+                    "success": False,
+                    "error": {
+                        "error_type": "invalid_arguments",
+                        "message": f"prompt_arguments is not valid JSON: {str(e)}",
+                        "details": {"raw_value": prompt_arguments[:200]},
+                        "suggestion": "Provide a valid JSON object or dictionary",
+                    },
+                    "metadata": {"request_time_ms": 0},
+                }
+
+        if isinstance(fill_variables, str):
+            try:
+                fill_variables = json.loads(fill_variables)
+            except json.JSONDecodeError as e:
+                return {
+                    "success": False,
+                    "error": {
+                        "error_type": "invalid_arguments",
+                        "message": f"fill_variables is not valid JSON: {str(e)}",
+                        "details": {"raw_value": fill_variables[:200]},
+                        "suggestion": "Provide a valid JSON object or dictionary",
+                    },
+                    "metadata": {"request_time_ms": 0},
+                }
+
+        if isinstance(llm_config, str):
+            try:
+                llm_config = json.loads(llm_config)
+            except json.JSONDecodeError as e:
+                return {
+                    "success": False,
+                    "error": {
+                        "error_type": "invalid_arguments",
+                        "message": f"llm_config is not valid JSON: {str(e)}",
+                        "details": {"raw_value": llm_config[:200]},
+                        "suggestion": "Provide a valid JSON object or dictionary",
+                    },
+                    "metadata": {"request_time_ms": 0},
+                }
+
         # Set default for prompt_arguments
         if prompt_arguments is None:
             prompt_arguments = {}

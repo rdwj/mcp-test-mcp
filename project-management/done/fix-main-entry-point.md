@@ -1,3 +1,12 @@
+---
+status: done
+created_date: 2025-10-14T02:40:43Z
+updated_date: 2025-10-14T02:40:43Z
+history:
+  - status: done
+    timestamp: 2025-10-14T02:40:43Z
+---
+
 # Fix __main__.py Entry Point
 
 ## Type
@@ -46,10 +55,22 @@ if __name__ == "__main__":
 - `src/mcp_test_mcp/__main__.py` - Add `main()` function
 
 ## Acceptance Criteria
-- [ ] `main()` function is exported from `__main__.py`
-- [ ] Running `mcp-test-mcp` from CLI works without ImportError
-- [ ] Server starts correctly using stdio transport
-- [ ] Running `python -m mcp_test_mcp` still works
+- [x] `main()` function is exported from `__main__.py`
+- [x] Running `mcp-test-mcp` from CLI works without ImportError
+- [x] Server starts correctly using stdio transport
+- [x] Running `python -m mcp_test_mcp` still works
+
+## Resolution Notes (2025-10-13)
+Fixed as part of v0.1.3 release during Claude Desktop integration testing. Added proper `main()` function with type hints and docstring to `src/mcp_test_mcp/__main__.py`:
+
+```python
+def main() -> None:
+    """Main entry point for the MCP server."""
+    # Uses stdio transport by default
+    mcp.run()
+```
+
+Verified working through npm wrapper (`npx -y mcp-test-mcp@0.1.5`) and direct Python execution.
 
 ## Impact
 Low - This only affects the CLI entry point. The MCP server works fine when integrated with Claude Code or other MCP clients.
