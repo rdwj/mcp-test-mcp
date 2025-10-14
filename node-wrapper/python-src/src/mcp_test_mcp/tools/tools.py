@@ -6,14 +6,18 @@ target MCP servers, enabling comprehensive tool testing workflows.
 
 import logging
 import time
-from typing import Any
+from typing import Annotated, Any
+
+from fastmcp import Context
 
 from ..connection import ConnectionError, ConnectionManager
+from ..mcp_instance import mcp
 
 logger = logging.getLogger(__name__)
 
 
-async def list_tools() -> dict[str, Any]:
+@mcp.tool
+async def list_tools(ctx: Context) -> dict[str, Any]:
     """List all tools available on the connected MCP server.
 
     Retrieves comprehensive information about all tools exposed by the target
@@ -34,6 +38,9 @@ async def list_tools() -> dict[str, Any]:
         # Verify connection exists
         client, state = ConnectionManager.require_connection()
 
+        # User-facing progress update
+        await ctx.info("Listing tools from connected MCP server")
+        # Detailed technical log
         logger.info("Listing tools from connected MCP server")
 
         # Get tools from the server
@@ -67,6 +74,9 @@ async def list_tools() -> dict[str, Any]:
             metadata["server_name"] = state.server_info.get("name", "unknown")
             metadata["server_version"] = state.server_info.get("version")
 
+        # User-facing success update
+        await ctx.info(f"Retrieved {len(tools_list)} tools from server")
+        # Detailed technical log
         logger.info(
             f"Retrieved {len(tools_list)} tools from server",
             extra={
@@ -85,6 +95,9 @@ async def list_tools() -> dict[str, Any]:
     except ConnectionError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Not connected: {str(e)}")
+        # Detailed technical log
         logger.error(f"Not connected: {str(e)}", extra={"duration_ms": elapsed_ms})
 
         return {
@@ -104,6 +117,9 @@ async def list_tools() -> dict[str, Any]:
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Failed to list tools: {str(e)}")
+        # Detailed technical log
         logger.exception("Failed to list tools", extra={"duration_ms": elapsed_ms})
 
         # Increment error counter
@@ -124,15 +140,16 @@ async def list_tools() -> dict[str, Any]:
         }
 
 
-async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+@mcp.tool
+async def call_tool(
+    name: Annotated[str, "Name of the tool to execute on the target MCP server"],
+    arguments: Annotated[dict[str, Any], "Dictionary of arguments to pass to the tool"],
+    ctx: Context
+) -> dict[str, Any]:
     """Execute a tool on the connected MCP server.
 
     Calls a tool by name with the provided arguments and returns the result
     along with execution timing and metadata.
-
-    Args:
-        name: Name of the tool to execute
-        arguments: Dictionary of arguments to pass to the tool
 
     Returns:
         Dictionary with tool execution results including:
@@ -153,6 +170,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         # Verify connection exists
         client, state = ConnectionManager.require_connection()
 
+        # User-facing progress update
+        await ctx.info(f"Calling tool '{name}' on target server")
+        # Detailed technical log
         logger.info(
             f"Calling tool '{name}' with arguments",
             extra={"tool_name": name, "arguments": arguments},
@@ -187,6 +207,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         else:
             result_content = str(result)
 
+        # User-facing success update
+        await ctx.info(f"Tool '{name}' executed successfully")
+        # Detailed technical log
         logger.info(
             f"Tool '{name}' executed successfully",
             extra={
@@ -217,6 +240,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     except ConnectionError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Not connected when calling tool '{name}': {str(e)}")
+        # Detailed technical log
         logger.error(
             f"Not connected when calling tool '{name}': {str(e)}",
             extra={"tool_name": name, "duration_ms": elapsed_ms},
@@ -251,6 +277,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             error_type = "invalid_arguments"
             suggestion = f"Arguments do not match the tool schema. Use list_tools() to see the correct schema for '{name}'"
 
+        # User-facing error update
+        await ctx.error(f"Failed to call tool '{name}': {str(e)}")
+        # Detailed technical log
         logger.error(
             f"Failed to call tool '{name}': {str(e)}",
             extra={

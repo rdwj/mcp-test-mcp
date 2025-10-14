@@ -2,27 +2,48 @@
 
 This module provides MCP tools that expose the ConnectionManager functionality
 to AI assistants for managing connections to target MCP servers.
+
+ARCHITECTURE NOTE - Client Role Implementation:
+==============================================
+This module implements the MCP CLIENT functionality for mcp-test-mcp's dual-role design:
+
+1. These tools are exposed by the FastMCP server (server role in server.py)
+2. When called, they use ConnectionManager to act as an MCP client
+3. The client connects to target MCP servers for testing
+
+Example flow for connect_to_server tool:
+- Claude calls connect_to_server (MCP tool call to THIS server)
+- Tool uses ConnectionManager.connect() (acts as MCP client)
+- Connects to target server via stdio or streamable-http transport
+- Returns connection state back to Claude
+
+This bridging of server-exposed tools and client functionality is what enables
+natural MCP server testing through Claude's conversation interface.
 """
 
 import logging
 import time
-from typing import Any
+from typing import Annotated, Any
+
+from fastmcp import Context
 
 from ..connection import ConnectionError, ConnectionManager
+from ..mcp_instance import mcp
 from ..models import ConnectionState
 
 logger = logging.getLogger(__name__)
 
 
-async def connect_to_server(url: str) -> dict[str, Any]:
+@mcp.tool
+async def connect_to_server(
+    url: Annotated[str, "Server URL (http://..., https://...) or file path for stdio transport"],
+    ctx: Context
+) -> dict[str, Any]:
     """Connect to an MCP server for testing.
 
     Establishes a connection to a target MCP server using the appropriate
     transport protocol (stdio for file paths, streamable-http for URLs).
     Only one connection can be active at a time.
-
-    Args:
-        url: Server URL (http://..., https://...) or file path for stdio transport
 
     Returns:
         Dictionary with connection details including:
@@ -40,11 +61,17 @@ async def connect_to_server(url: str) -> dict[str, Any]:
     start_time = time.perf_counter()
 
     try:
+        # User-facing progress update
+        await ctx.info(f"Connecting to MCP server at {url}")
+        # Detailed technical log
         logger.info(f"Connecting to MCP server at: {url}")
         state: ConnectionState = await ConnectionManager.connect(url)
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing success update
+        await ctx.info(f"Successfully connected to {url}")
+        # Detailed technical log
         logger.info(
             f"Successfully connected to {url}",
             extra={
@@ -68,6 +95,9 @@ async def connect_to_server(url: str) -> dict[str, Any]:
     except ConnectionError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Failed to connect to {url}: {str(e)}")
+        # Detailed technical log
         logger.error(
             f"Failed to connect to {url}: {str(e)}",
             extra={"url": url, "error": str(e), "duration_ms": elapsed_ms},
@@ -98,6 +128,9 @@ async def connect_to_server(url: str) -> dict[str, Any]:
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Unexpected error connecting to {url}: {str(e)}")
+        # Detailed technical log
         logger.exception(
             f"Unexpected error connecting to {url}",
             extra={"url": url, "duration_ms": elapsed_ms},
@@ -119,7 +152,8 @@ async def connect_to_server(url: str) -> dict[str, Any]:
         }
 
 
-async def disconnect() -> dict[str, Any]:
+@mcp.tool
+async def disconnect(ctx: Context) -> dict[str, Any]:
     """Close the current MCP server connection.
 
     Safely disconnects from the active MCP server and clears all connection
@@ -140,6 +174,9 @@ async def disconnect() -> dict[str, Any]:
     was_connected = previous_state is not None
 
     try:
+        # User-facing progress update
+        await ctx.info("Disconnecting from MCP server")
+        # Detailed technical log
         logger.info("Disconnecting from MCP server")
         await ConnectionManager.disconnect()
 
@@ -170,6 +207,9 @@ async def disconnect() -> dict[str, Any]:
                 "statistics": previous_state.statistics,
             }
 
+        # User-facing completion update
+        await ctx.info(message)
+        # Detailed technical log
         logger.info(message, extra=metadata)
 
         return {
@@ -183,6 +223,9 @@ async def disconnect() -> dict[str, Any]:
         # Disconnect should never fail, but handle gracefully
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Unexpected error during disconnect: {str(e)}")
+        # Detailed technical log
         logger.exception("Unexpected error during disconnect")
 
         return {
@@ -196,7 +239,8 @@ async def disconnect() -> dict[str, Any]:
         }
 
 
-async def get_connection_status() -> dict[str, Any]:
+@mcp.tool
+async def get_connection_status(ctx: Context) -> dict[str, Any]:
     """Check the current MCP server connection state.
 
     Returns detailed information about the active connection including
@@ -234,6 +278,9 @@ async def get_connection_status() -> dict[str, Any]:
             message = f"Connected to {state.server_url}"
             connection_data = state.model_dump(mode="json")
 
+            # User-facing debug update
+            await ctx.debug(f"Connection status: connected to {state.server_url}")
+            # Detailed technical log
             logger.debug(
                 "Connection status checked",
                 extra={
@@ -246,6 +293,9 @@ async def get_connection_status() -> dict[str, Any]:
             message = "Not connected to any MCP server"
             connection_data = None
 
+            # User-facing debug update
+            await ctx.debug("Connection status: not connected")
+            # Detailed technical log
             logger.debug("Connection status checked", extra={"connected": False})
 
         return {
@@ -260,6 +310,9 @@ async def get_connection_status() -> dict[str, Any]:
         # Status check should never fail, but handle gracefully
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Unexpected error checking connection status: {str(e)}")
+        # Detailed technical log
         logger.exception("Unexpected error checking connection status")
 
         return {

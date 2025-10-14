@@ -6,14 +6,18 @@ connected target MCP servers, enabling comprehensive resource testing workflows.
 
 import logging
 import time
-from typing import Any
+from typing import Annotated, Any
+
+from fastmcp import Context
 
 from ..connection import ConnectionError, ConnectionManager
+from ..mcp_instance import mcp
 
 logger = logging.getLogger(__name__)
 
 
-async def list_resources() -> dict[str, Any]:
+@mcp.tool
+async def list_resources(ctx: Context) -> dict[str, Any]:
     """List all resources available on the connected MCP server.
 
     Retrieves comprehensive information about all resources exposed by the target
@@ -35,6 +39,9 @@ async def list_resources() -> dict[str, Any]:
         # Verify connection exists
         client, state = ConnectionManager.require_connection()
 
+        # User-facing progress update
+        await ctx.info("Listing resources from connected MCP server")
+        # Detailed technical log
         logger.info("Listing resources from connected MCP server")
 
         # Get resources from the server
@@ -66,6 +73,9 @@ async def list_resources() -> dict[str, Any]:
             metadata["server_name"] = state.server_info.get("name", "unknown")
             metadata["server_version"] = state.server_info.get("version")
 
+        # User-facing success update
+        await ctx.info(f"Retrieved {len(resources_list)} resources from server")
+        # Detailed technical log
         logger.info(
             f"Retrieved {len(resources_list)} resources from server",
             extra={
@@ -84,6 +94,9 @@ async def list_resources() -> dict[str, Any]:
     except ConnectionError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Not connected: {str(e)}")
+        # Detailed technical log
         logger.error(f"Not connected: {str(e)}", extra={"duration_ms": elapsed_ms})
 
         return {
@@ -103,6 +116,9 @@ async def list_resources() -> dict[str, Any]:
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Failed to list resources: {str(e)}")
+        # Detailed technical log
         logger.exception("Failed to list resources", extra={"duration_ms": elapsed_ms})
 
         # Increment error counter
@@ -123,13 +139,14 @@ async def list_resources() -> dict[str, Any]:
         }
 
 
-async def read_resource(uri: str) -> dict[str, Any]:
+@mcp.tool
+async def read_resource(
+    uri: Annotated[str, "URI of the resource to read (e.g., 'config://settings')"],
+    ctx: Context
+) -> dict[str, Any]:
     """Read a specific resource from the connected MCP server.
 
     Reads a resource by URI and returns its content along with metadata.
-
-    Args:
-        uri: URI of the resource to read (e.g., "config://settings")
 
     Returns:
         Dictionary with resource content including:
@@ -149,6 +166,9 @@ async def read_resource(uri: str) -> dict[str, Any]:
         # Verify connection exists
         client, state = ConnectionManager.require_connection()
 
+        # User-facing progress update
+        await ctx.info(f"Reading resource '{uri}' from server")
+        # Detailed technical log
         logger.info(
             f"Reading resource '{uri}' from server",
             extra={"resource_uri": uri},
@@ -188,6 +208,9 @@ async def read_resource(uri: str) -> dict[str, Any]:
                 content = str(content_item)
                 content_size = len(content)
 
+        # User-facing success update
+        await ctx.info(f"Resource '{uri}' read successfully ({content_size} bytes)")
+        # Detailed technical log
         logger.info(
             f"Resource '{uri}' read successfully",
             extra={
@@ -215,6 +238,9 @@ async def read_resource(uri: str) -> dict[str, Any]:
     except ConnectionError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Not connected when reading resource '{uri}': {str(e)}")
+        # Detailed technical log
         logger.error(
             f"Not connected when reading resource '{uri}': {str(e)}",
             extra={"resource_uri": uri, "duration_ms": elapsed_ms},
@@ -246,6 +272,9 @@ async def read_resource(uri: str) -> dict[str, Any]:
             error_type = "resource_not_found"
             suggestion = f"Resource '{uri}' does not exist on the server. Use list_resources() to see available resources"
 
+        # User-facing error update
+        await ctx.error(f"Failed to read resource '{uri}': {str(e)}")
+        # Detailed technical log
         logger.error(
             f"Failed to read resource '{uri}': {str(e)}",
             extra={

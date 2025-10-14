@@ -2,6 +2,23 @@
 
 This module provides the ConnectionManager class for managing a single active
 connection to a target MCP server, tracking connection state and statistics.
+
+ARCHITECTURE NOTE - MCP Client Role:
+====================================
+This is the MCP CLIENT component in mcp-test-mcp's dual-role architecture:
+
+- **Role**: Acts as an MCP client to connect to target MCP servers
+- **Used By**: Tool implementations in tools/ that are exposed as MCP server tools
+- **Purpose**: Enables testing of target MCP servers by providing client connectivity
+
+Flow:
+1. User calls a tool via Claude (e.g., connect_to_server)
+2. Tool in tools/connection.py calls ConnectionManager.connect()
+3. ConnectionManager creates a FastMCP Client and connects to target server
+4. Tool returns results back to Claude through the MCP server interface
+
+This singleton manager ensures only one target server connection is active at a time,
+simplifying state management for testing workflows.
 """
 
 import asyncio

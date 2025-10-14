@@ -3,6 +3,22 @@ FastMCP server instance for mcp-test-mcp.
 
 This module provides the main FastMCP server instance and registers
 all available MCP tools for Claude Code/Desktop integration.
+
+ARCHITECTURE NOTE - Dual Server/Client Role:
+===========================================
+This module serves as the MCP SERVER role in mcp-test-mcp's dual-role architecture:
+
+1. **Server Role (This Module)**: Exposes testing tools via MCP protocol that Claude can call
+2. **Client Role (ConnectionManager)**: Tools connect to target MCP servers for testing
+
+The dual nature is intentional and by design - this is a testing harness where:
+- Claude calls tools on THIS server (server role)
+- Tools internally act as MCP clients (client role via ConnectionManager)
+- Target MCP servers are tested through these tool calls
+
+Flow: User → Claude → mcp-test-mcp (server) → Target MCP Server (client)
+
+This design enables natural MCP server testing through Claude's existing tool-calling interface.
 """
 
 import json
@@ -24,13 +40,6 @@ else:
     # Try current directory as fallback
     load_dotenv()
 # Note: Don't log here - logging isn't set up yet and would go to stdout
-
-# Import tool functions
-from .tools.connection import connect_to_server, disconnect, get_connection_status
-from .tools.llm import execute_prompt_with_llm
-from .tools.prompts import get_prompt, list_prompts
-from .tools.resources import list_resources, read_resource
-from .tools.tools import call_tool, list_tools
 
 
 # Configure structured JSON logging
@@ -81,8 +90,12 @@ setup_json_logging()
 
 logger = logging.getLogger(__name__)
 
-# Create FastMCP server instance
-mcp = FastMCP(name="mcp-test-mcp")
+# Import the shared FastMCP server instance
+from .mcp_instance import mcp
+
+# Import tool modules to trigger decorator registration
+# This MUST happen after mcp instance is imported but before the server runs
+from .tools import connection, tools, resources, prompts, llm
 
 # Note: Logging during module import can interfere with stdio transport
 # Only log at DEBUG level to avoid corrupting JSON-RPC protocol on stdout
@@ -102,7 +115,7 @@ async def health_check(ctx: Context) -> Dict[str, Any]:
     return {
         "status": "healthy",
         "server": "mcp-test-mcp",
-        "version": "0.1.5",
+        "version": "0.1.6",
         "transport": "stdio"
     }
 
@@ -152,25 +165,8 @@ def add(a: int, b: int) -> int:
     return a + b
 
 
-# Register connection management tools
-mcp.tool(connect_to_server)
-mcp.tool(disconnect)
-mcp.tool(get_connection_status)
-
-# Register tool testing tools
-mcp.tool(list_tools)
-mcp.tool(call_tool)
-
-# Register resource testing tools
-mcp.tool(list_resources)
-mcp.tool(read_resource)
-
-# Register prompt testing tools
-mcp.tool(list_prompts)
-mcp.tool(get_prompt)
-
-# Register LLM integration tools
-mcp.tool(execute_prompt_with_llm)
+# Tool registration happens automatically via decorators in imported modules
+# No need for manual mcp.tool() calls here
 
 # Note: Logging during module import can interfere with stdio transport
 # Only log at DEBUG level to avoid corrupting JSON-RPC protocol on stdout

@@ -9,6 +9,67 @@
 
 Think of it as a testing harness that makes MCP server development and debugging dramatically easier by providing AI assistants with the visibility and control they need to thoroughly test MCP implementations.
 
+## Architecture: Dual Server/Client Design
+
+**mcp-test-mcp** has a unique dual-role architecture that is intentional and purpose-built for testing:
+
+### The Dual Nature
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Testing Flow                                  │
+└─────────────────────────────────────────────────────────────────────┘
+
+User/Developer
+    │
+    ├─► Claude Desktop/Code (MCP Client)
+            │
+            ├─► mcp-test-mcp (MCP Server Role)
+            │   └─ Exposes testing tools via MCP protocol
+            │      • connect_to_server
+            │      • list_tools, call_tool
+            │      • list_resources, read_resource
+            │      • list_prompts, get_prompt
+            │      • execute_prompt_with_llm
+            │
+            ├─► mcp-test-mcp (MCP Client Role)
+                    │
+                    └─► Target MCP Server (Server Being Tested)
+                        └─ The server you're developing/debugging
+```
+
+### Why This Design?
+
+The coupling between server and client functionality is **intentional and by design**:
+
+1. **Server Role**: Exposes testing capabilities as MCP tools that Claude can call
+2. **Client Role**: Connects to target MCP servers to test their functionality
+3. **Unified Purpose**: The tools *require* client functionality to work - they test other MCP servers
+
+This isn't two separate concerns accidentally merged - it's a testing harness where the server role exposes the client capabilities as testable tools.
+
+### Code Organization
+
+The codebase reflects this dual role:
+
+- **`src/mcp_test_mcp/server.py`**: FastMCP server instance (exposes tools to Claude)
+- **`src/mcp_test_mcp/connection.py`**: ConnectionManager (MCP client for target servers)
+- **`src/mcp_test_mcp/tools/`**: Tool implementations that bridge server and client roles
+  - `connection.py`: Connection management tools (uses ConnectionManager)
+  - `tools.py`: Tool testing tools (calls target server's tools)
+  - `resources.py`: Resource testing tools (reads target server's resources)
+  - `prompts.py`: Prompt testing tools (gets target server's prompts)
+  - `llm.py`: LLM integration (executes prompts with actual LLM)
+
+### Key Insight
+
+When you call `connect_to_server` as a tool in Claude, you're:
+1. Calling an MCP tool on **mcp-test-mcp** (server role)
+2. Which internally uses **ConnectionManager** to connect as a client
+3. To a **target MCP server** that you want to test
+
+This makes testing MCP servers natural: Claude calls tools, those tools test other servers.
+
 ## The Problem: The Broken Loop
 
 When developing MCP servers, testing can be frustrating. AI assistants cannot interact with non-configured MCP servers for testing, which sometimes causes them to incorrectly assume working MCP code is broken and "fix" it by converting to REST/WebSocket patterns.

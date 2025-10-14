@@ -6,14 +6,18 @@ connected target MCP servers, enabling comprehensive prompt testing workflows.
 
 import logging
 import time
-from typing import Any
+from typing import Annotated, Any
+
+from fastmcp import Context
 
 from ..connection import ConnectionError, ConnectionManager
+from ..mcp_instance import mcp
 
 logger = logging.getLogger(__name__)
 
 
-async def list_prompts() -> dict[str, Any]:
+@mcp.tool
+async def list_prompts(ctx: Context) -> dict[str, Any]:
     """List all prompts available on the connected MCP server.
 
     Retrieves comprehensive information about all prompts exposed by the target
@@ -35,6 +39,9 @@ async def list_prompts() -> dict[str, Any]:
         # Verify connection exists
         client, state = ConnectionManager.require_connection()
 
+        # User-facing progress update
+        await ctx.info("Listing prompts from connected MCP server")
+        # Detailed technical log
         logger.info("Listing prompts from connected MCP server")
 
         # Get prompts from the server
@@ -76,6 +83,9 @@ async def list_prompts() -> dict[str, Any]:
             metadata["server_name"] = state.server_info.get("name", "unknown")
             metadata["server_version"] = state.server_info.get("version")
 
+        # User-facing success update
+        await ctx.info(f"Retrieved {len(prompts_list)} prompts from server")
+        # Detailed technical log
         logger.info(
             f"Retrieved {len(prompts_list)} prompts from server",
             extra={
@@ -94,6 +104,9 @@ async def list_prompts() -> dict[str, Any]:
     except ConnectionError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Not connected: {str(e)}")
+        # Detailed technical log
         logger.error(f"Not connected: {str(e)}", extra={"duration_ms": elapsed_ms})
 
         return {
@@ -113,6 +126,9 @@ async def list_prompts() -> dict[str, Any]:
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Failed to list prompts: {str(e)}")
+        # Detailed technical log
         logger.exception("Failed to list prompts", extra={"duration_ms": elapsed_ms})
 
         # Increment error counter
@@ -133,15 +149,16 @@ async def list_prompts() -> dict[str, Any]:
         }
 
 
-async def get_prompt(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+@mcp.tool
+async def get_prompt(
+    name: Annotated[str, "Name of the prompt to retrieve"],
+    arguments: Annotated[dict[str, Any], "Dictionary of arguments to pass to the prompt"],
+    ctx: Context
+) -> dict[str, Any]:
     """Get a rendered prompt from the connected MCP server.
 
     Retrieves a prompt by name with the provided arguments and returns the
     rendered prompt messages.
-
-    Args:
-        name: Name of the prompt to retrieve
-        arguments: Dictionary of arguments to pass to the prompt
 
     Returns:
         Dictionary with rendered prompt including:
@@ -162,6 +179,9 @@ async def get_prompt(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         # Verify connection exists
         client, state = ConnectionManager.require_connection()
 
+        # User-facing progress update
+        await ctx.info(f"Getting prompt '{name}' with arguments")
+        # Detailed technical log
         logger.info(
             f"Getting prompt '{name}' with arguments",
             extra={"prompt_name": name, "arguments": arguments},
@@ -222,6 +242,9 @@ async def get_prompt(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             "messages": messages,
         }
 
+        # User-facing success update
+        await ctx.info(f"Prompt '{name}' retrieved successfully with {len(messages)} messages")
+        # Detailed technical log
         logger.info(
             f"Prompt '{name}' retrieved successfully",
             extra={
@@ -244,6 +267,9 @@ async def get_prompt(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     except ConnectionError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Not connected when getting prompt '{name}': {str(e)}")
+        # Detailed technical log
         logger.error(
             f"Not connected when getting prompt '{name}': {str(e)}",
             extra={"prompt_name": name, "duration_ms": elapsed_ms},
@@ -278,6 +304,9 @@ async def get_prompt(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
             error_type = "invalid_arguments"
             suggestion = f"Arguments do not match the prompt schema. Use list_prompts() to see the correct schema for '{name}'"
 
+        # User-facing error update
+        await ctx.error(f"Failed to get prompt '{name}': {str(e)}")
+        # Detailed technical log
         logger.error(
             f"Failed to get prompt '{name}': {str(e)}",
             extra={

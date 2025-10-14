@@ -9,20 +9,24 @@ import logging
 import os
 import re
 import time
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
+from fastmcp import Context
 
 from ..connection import ConnectionError, ConnectionManager
+from ..mcp_instance import mcp
 
 logger = logging.getLogger(__name__)
 
 
+@mcp.tool
 async def execute_prompt_with_llm(
-    prompt_name: str,
-    prompt_arguments: dict[str, Any] | str | None = None,
-    fill_variables: dict[str, Any] | str | None = None,
-    llm_config: dict[str, Any] | str | None = None,
+    prompt_name: Annotated[str, "Name of the prompt to execute"],
+    ctx: Context,
+    prompt_arguments: Annotated[dict[str, Any] | str | None, "Arguments to pass to the MCP prompt (JSON object or string)"] = None,
+    fill_variables: Annotated[dict[str, Any] | str | None, "Template variables to fill in prompt messages (JSON object or string)"] = None,
+    llm_config: Annotated[dict[str, Any] | str | None, "LLM configuration (url, model, api_key, etc.)"] = None
 ) -> dict[str, Any]:
     """Execute a prompt with an LLM and return the response.
 
@@ -121,6 +125,9 @@ async def execute_prompt_with_llm(
         # Verify connection exists
         client, state = ConnectionManager.require_connection()
 
+        # User-facing progress update
+        await ctx.info(f"Executing prompt '{prompt_name}' with LLM")
+        # Detailed technical log
         logger.info(
             f"Executing prompt '{prompt_name}' with LLM",
             extra={
@@ -208,6 +215,8 @@ async def execute_prompt_with_llm(
             "temperature": temperature,
         }
 
+        # User-facing progress update
+        await ctx.info(f"Sending request to LLM endpoint: {llm_url}")
         # Send to LLM
         llm_start = time.perf_counter()
         async with httpx.AsyncClient(timeout=60.0) as http_client:
@@ -265,6 +274,9 @@ async def execute_prompt_with_llm(
             except json.JSONDecodeError:
                 pass  # Not valid JSON, leave as None
 
+        # User-facing success update
+        await ctx.info(f"Prompt '{prompt_name}' executed successfully with LLM")
+        # Detailed technical log
         logger.info(
             f"Prompt '{prompt_name}' executed successfully with LLM",
             extra={
@@ -302,6 +314,9 @@ async def execute_prompt_with_llm(
     except ConnectionError as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+        # User-facing error update
+        await ctx.error(f"Not connected when executing prompt '{prompt_name}': {str(e)}")
+        # Detailed technical log
         logger.error(
             f"Not connected when executing prompt '{prompt_name}': {str(e)}",
             extra={"prompt_name": prompt_name, "duration_ms": elapsed_ms},
@@ -335,6 +350,9 @@ async def execute_prompt_with_llm(
             error_type = "llm_request_error"
             suggestion = "LLM request timed out or connection failed"
 
+        # User-facing error update
+        await ctx.error(f"Failed to execute prompt '{prompt_name}' with LLM: {str(e)}")
+        # Detailed technical log
         logger.error(
             f"Failed to execute prompt '{prompt_name}' with LLM: {str(e)}",
             extra={
