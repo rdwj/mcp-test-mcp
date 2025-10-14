@@ -150,180 +150,17 @@ This creates a testing workflow where AI assistants can effectively test MCP ser
 
 ## Installation
 
-### From Source
+### For Use with Claude Desktop / Claude Code (Recommended)
 
-```bash
-# Clone the repository
-git clone https://github.com/example/mcp-test-mcp
-cd mcp-test-mcp
+The easiest way to use mcp-test-mcp is with Claude Desktop or Claude Code. Simply add it to your MCP configuration file:
 
-# Create and activate virtual environment (REQUIRED)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+**Configuration File Location:**
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%/Claude/claude_desktop_config.json`
 
-# Install in editable mode with dev dependencies
-pip install -e ".[dev]"
-```
-
-### Using pip
-
-```bash
-# Create virtual environment first (REQUIRED)
-python -m venv venv
-source venv/bin/activate
-
-# Install the package
-pip install mcp-test-mcp
-```
-
-### Using npm (Easiest - Recommended for Most Users)
-
-The simplest way to install mcp-test-mcp is via npm/npx:
-
-```bash
-# No installation needed! Use directly with npx
-npx mcp-test-mcp
-
-# Or install globally
-npm install -g mcp-test-mcp
-```
-
-**Prerequisites:**
-- Node.js 16+ (for npx)
-- Python 3.11+ (automatically detected during installation)
-
-The npm package automatically:
-1. Checks for Python 3.11+ on your system
-2. Creates a virtual environment
-3. Installs all Python dependencies
-
-### Using uv (Alternative Quick Setup)
-
-[uv](https://github.com/astral-sh/uv) is a fast Python package installer and runner. With the project on GitHub, you can run mcp-test-mcp directly without cloning:
-
-```bash
-# Install uv if you don't have it
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# Or on macOS: brew install uv
-
-# Run the server directly from GitHub (no clone needed!)
-uvx --from git+https://github.com/rdwj/mcp-test-mcp mcp-test-mcp
-
-# Or run from a local clone
-git clone https://github.com/rdwj/mcp-test-mcp
-cd mcp-test-mcp
-uv run mcp-test-mcp
-
-# Install globally with uv for use in Claude Code
-uv tool install git+https://github.com/rdwj/mcp-test-mcp
-```
-
-#### Claude Code Configuration with uv
-
-You have several options for configuring mcp-test-mcp with uv in Claude Code/Desktop:
-
-**Option 1: Run from GitHub (recommended - no clone needed!)**
+**Using npx (Recommended - No Installation Required):**
 
 *Basic configuration (most users):*
-```json
-{
-  "mcpServers": {
-    "mcp-test-mcp": {
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/rdwj/mcp-test-mcp", "mcp-test-mcp"]
-    }
-  }
-}
-```
-
-*With LLM integration (optional):*
-```json
-{
-  "mcpServers": {
-    "mcp-test-mcp": {
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/rdwj/mcp-test-mcp", "mcp-test-mcp"],
-      "env": {
-        "LLM_URL": "https://your-llm-endpoint.com/v1",
-        "LLM_MODEL_NAME": "your-model-name",
-        "LLM_API_KEY": "your-api-key"
-      }
-    }
-  }
-}
-```
-
-**Option 2: Run from local clone**
-
-*Basic configuration:*
-```json
-{
-  "mcpServers": {
-    "mcp-test-mcp": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/mcp-test-mcp", "mcp-test-mcp"]
-    }
-  }
-}
-```
-
-*With LLM integration (optional):*
-```json
-{
-  "mcpServers": {
-    "mcp-test-mcp": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/mcp-test-mcp", "mcp-test-mcp"],
-      "env": {
-        "LLM_URL": "https://your-llm-endpoint.com/v1",
-        "LLM_MODEL_NAME": "your-model-name",
-        "LLM_API_KEY": "your-api-key"
-      }
-    }
-  }
-}
-```
-
-**Option 3: Global install with uv tool**
-
-*Basic configuration:*
-```json
-{
-  "mcpServers": {
-    "mcp-test-mcp": {
-      "command": "mcp-test-mcp"
-    }
-  }
-}
-```
-
-*With LLM integration (optional):*
-```json
-{
-  "mcpServers": {
-    "mcp-test-mcp": {
-      "command": "mcp-test-mcp",
-      "env": {
-        "LLM_URL": "https://your-llm-endpoint.com/v1",
-        "LLM_MODEL_NAME": "your-model-name",
-        "LLM_API_KEY": "your-api-key"
-      }
-    }
-  }
-}
-```
-
-**Note about LLM configuration:** The `env` section is **completely optional**. The server and all testing tools work without it. LLM configuration is only required if you want to use the `execute_prompt_with_llm` tool for end-to-end prompt testing. All other tools (connect, list_tools, call_tool, list_resources, list_prompts, etc.) work without any LLM configuration.
-
-## Configuration
-
-### Claude Code Configuration
-
-Add mcp-test-mcp to your Claude Code MCP settings (typically in `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS or `%APPDATA%/Claude/claude_desktop_config.json` on Windows):
-
-**Using npm/npx (Easiest - Recommended)**
-
-*Basic configuration:*
 ```json
 {
   "mcpServers": {
@@ -357,7 +194,52 @@ Add mcp-test-mcp to your Claude Code MCP settings (typically in `~/Library/Appli
 claude mcp add mcp-test-mcp -- npx -y mcp-test-mcp
 ```
 
-**Using standard Python (pip install)**
+**Prerequisites:**
+- Node.js 16+ (for npx)
+- Python 3.11+ (automatically detected during installation)
+
+The npm package automatically:
+1. Checks for Python 3.11+ on your system
+2. Creates a virtual environment
+3. Installs all Python dependencies
+
+**Note about LLM configuration:** The `env` section is **completely optional**. The server and all testing tools work without it. LLM configuration is only required if you want to use the `execute_prompt_with_llm` tool for end-to-end prompt testing. All other tools (connect, list_tools, call_tool, list_resources, list_prompts, etc.) work without any LLM configuration.
+
+After adding this configuration, restart Claude Code/Desktop for the changes to take effect.
+
+### For Local Development / Standalone Use
+
+If you want to develop with or run mcp-test-mcp directly (outside of Claude):
+
+**Using pip:**
+
+```bash
+# Create virtual environment first (REQUIRED)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install the package
+pip install mcp-test-mcp
+```
+
+**From Source:**
+
+```bash
+# Clone the repository
+git clone https://github.com/example/mcp-test-mcp
+cd mcp-test-mcp
+
+# Create and activate virtual environment (REQUIRED)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install in editable mode with dev dependencies
+pip install -e ".[dev]"
+```
+
+**Using standard Python with Claude (Alternative):**
+
+If you prefer to use pip-installed Python instead of npx:
 
 *Basic configuration:*
 ```json
@@ -388,19 +270,32 @@ claude mcp add mcp-test-mcp -- npx -y mcp-test-mcp
 }
 ```
 
-**Using uv (recommended)**
+## Configuration
 
-See the "Using uv" section above for multiple configuration options.
+Configuration instructions have been moved to the [Installation](#installation) section above. Choose the installation method that best fits your needs:
 
-After adding this configuration, restart Claude Code/Desktop for the changes to take effect.
+- **For Claude Desktop/Code users**: See [For Use with Claude Desktop / Claude Code](#for-use-with-claude-desktop--claude-code-recommended)
+- **For local development**: See [For Local Development / Standalone Use](#for-local-development--standalone-use)
 
-### Claude Desktop Configuration
+### LLM Integration Configuration (Optional)
 
-The configuration is identical for Claude Desktop - add the same JSON to your MCP settings file.
+The `execute_prompt_with_llm` tool requires LLM configuration to work. All other tools work without any LLM setup.
 
-### LLM Integration Configuration
+**For Claude Desktop/Code users:**
 
-To use the `execute_prompt_with_llm` tool, create a `.env` file in the project root:
+Add the `env` section to your MCP configuration (see examples in the Installation section above):
+
+```json
+"env": {
+  "LLM_URL": "https://your-llm-endpoint.com/v1",
+  "LLM_MODEL_NAME": "your-model-name",
+  "LLM_API_KEY": "your-api-key"
+}
+```
+
+**For standalone/local development:**
+
+Create a `.env` file in the project root:
 
 ```bash
 # .env file
@@ -633,7 +528,7 @@ mypy src/
 
 ### Project Structure
 
-```
+```text
 mcp-test-mcp/
 ├── src/
 │   └── mcp_test_mcp/
