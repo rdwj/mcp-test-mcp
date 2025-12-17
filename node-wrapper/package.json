@@ -1,6 +1,6 @@
 {
   "name": "mcp-test-mcp",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "An MCP server for testing MCP servers you are developing with AI assistants",
   "main": "index.js",
   "bin": {
