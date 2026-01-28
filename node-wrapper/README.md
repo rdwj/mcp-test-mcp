@@ -200,11 +200,46 @@ pip install -e ".[dev]"
 
 </details>
 
+## Command Line Options
+
+The server supports multiple transports for different deployment scenarios:
+
+```bash
+# Default: stdio transport (for Claude Desktop/Code)
+mcp-test-mcp
+
+# Explicit stdio
+mcp-test-mcp --transport stdio
+
+# HTTP transport for web deployments
+mcp-test-mcp --transport streamable-http
+mcp-test-mcp --transport streamable-http --host 0.0.0.0 --port 8080
+
+# Legacy SSE transport (for backward compatibility)
+mcp-test-mcp --transport sse --port 9000
+```
+
+**Options:**
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--transport` | `-t` | Transport type: `stdio`, `streamable-http`, `sse` | `stdio` |
+| `--host` | `-H` | Host to bind (HTTP transports only) | `127.0.0.1` |
+| `--port` | `-p` | Port to bind (HTTP transports only) | `8000` |
+
+**Using with npx:**
+
+```bash
+# HTTP server via npx
+npx -y mcp-test-mcp --transport streamable-http --port 8080
+```
+
 ## Quick Start
 
 Once configured, test MCP servers through natural conversation:
 
 - **Connect:** "Connect to my MCP server at /path/to/server"
+- **Connect with auth:** "Connect to https://api.example.com/mcp with headers Authorization: Bearer my-token"
 - **Discover:** "What tools does it have?"
 - **Test:** "Call the echo tool with message 'Hello'"
 - **Status:** "What's the connection status?"
@@ -214,7 +249,7 @@ Once configured, test MCP servers through natural conversation:
 
 ### Connection Management
 
-- **connect_to_server**: Connect to a target MCP server (stdio or HTTP)
+- **connect_to_server**: Connect to a target MCP server (stdio or HTTP). Supports optional `headers` parameter for authenticated HTTP connections (e.g., `{"Authorization": "Bearer token"}`). Headers are ignored for stdio transport.
 - **disconnect**: Close active connection
 - **get_connection_status**: Check connection state and statistics
 
@@ -243,6 +278,18 @@ Once configured, test MCP servers through natural conversation:
 
 ## Environment Variables
 
+### Transport Configuration
+
+These environment variables configure the server transport. CLI arguments take precedence.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MCP_TEST_TRANSPORT` | Transport type: `stdio`, `streamable-http`, `sse` | `stdio` |
+| `MCP_TEST_HOST` | Host to bind (HTTP transports only) | `127.0.0.1` |
+| `MCP_TEST_PORT` | Port to bind (HTTP transports only) | `8000` |
+
+**Priority:** CLI argument > environment variable > default
+
 ### Core
 
 - **MCP_TEST_LOG_LEVEL**: Logging level (DEBUG, INFO, WARNING, ERROR). Default: INFO
@@ -270,6 +317,38 @@ pytest --cov=mcp_test_mcp --cov-report=html
 black src/ tests/
 ruff check src/ tests/
 mypy src/
+```
+
+## Container Deployment
+
+For deploying mcp-test-mcp in containers (e.g., OpenShift, Kubernetes):
+
+```dockerfile
+FROM registry.redhat.io/ubi9/python-311:latest
+
+WORKDIR /app
+
+# Install mcp-test-mcp
+RUN pip install --no-cache-dir mcp-test-mcp
+
+# Expose HTTP port
+EXPOSE 8000
+
+# Run with streamable-http transport
+CMD ["mcp-test-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+Or use environment variables:
+
+```yaml
+# kubernetes deployment snippet
+env:
+  - name: MCP_TEST_TRANSPORT
+    value: "streamable-http"
+  - name: MCP_TEST_HOST
+    value: "0.0.0.0"
+  - name: MCP_TEST_PORT
+    value: "8000"
 ```
 
 ## Documentation
