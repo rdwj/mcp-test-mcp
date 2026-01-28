@@ -8,9 +8,20 @@ const fs = require('fs');
  * Node.js wrapper for mcp-test-mcp Python FastMCP server
  *
  * This script spawns the Python MCP server process and handles stdio communication.
+ *
+ * Supported CLI arguments (passed to Python):
+ *   --transport, -t    Transport type: stdio (default), streamable-http, sse
+ *   --host, -H         Host to bind for HTTP transports (default: 127.0.0.1)
+ *   --port, -p         Port to bind for HTTP transports (default: 8000)
+ *   --help, -h         Show help message
+ *
+ * Examples:
+ *   npx mcp-test-mcp                                    # stdio transport
+ *   npx mcp-test-mcp --transport streamable-http       # HTTP on 127.0.0.1:8000
+ *   npx mcp-test-mcp -t streamable-http -H 0.0.0.0 -p 8080
  */
 
-// Handle --version flag
+// Handle --version flag (handled by wrapper, not Python)
 if (process.argv.includes('--version') || process.argv.includes('-v')) {
   const packageJson = require('./package.json');
   console.log(`mcp-test-mcp v${packageJson.version}`);
