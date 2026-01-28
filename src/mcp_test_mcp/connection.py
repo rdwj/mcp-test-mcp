@@ -22,14 +22,18 @@ simplifying state management for testing workflows.
 """
 
 import asyncio
+import logging
 import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from fastmcp import Client
+from fastmcp.client.transports import SSETransport, StreamableHttpTransport
 from mcp.types import ServerCapabilities
 
 from .models import ConnectionState, ErrorDetail
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionError(Exception):
@@ -101,7 +105,9 @@ class ConnectionManager:
         return "stdio"
 
     @classmethod
-    async def connect(cls, url: str) -> ConnectionState:
+    async def connect(
+        cls, url: str, headers: Optional[dict[str, str]] = None
+    ) -> ConnectionState:
         """Connect to an MCP server.
 
         Creates a FastMCP Client instance, establishes connection, and stores
@@ -112,6 +118,9 @@ class ConnectionManager:
             url: Server URL or file path
                 - HTTP/HTTPS URLs use streamable-http transport
                 - File paths use stdio transport
+            headers: Optional HTTP headers for authenticated connections.
+                     Only used for HTTP-based transports. Ignored for stdio.
+                     Header values are not logged or stored for security.
 
         Returns:
             ConnectionState with connection details and initial statistics
@@ -127,15 +136,41 @@ class ConnectionManager:
             # Get timeout configuration
             connect_timeout = cls._get_timeout("MCP_TEST_CONNECT_TIMEOUT", 30.0)
 
+            # Normalize empty headers to None
+            if headers is not None and len(headers) == 0:
+                headers = None
+
             try:
-                # Create client - let FastMCP auto-detect transport
-                client = Client(url, timeout=connect_timeout)
+                # Infer transport type
+                transport_type = cls._infer_transport(url)
+
+                # Track whether headers were actually used (not just provided)
+                headers_provided = False
+
+                # Create client with explicit transport if headers provided for HTTP
+                client: Client  # type: ignore[type-arg]
+                if headers and transport_type in ("streamable-http", "sse"):
+                    transport_obj: Union[SSETransport, StreamableHttpTransport]
+                    if transport_type == "sse":
+                        transport_obj = SSETransport(url=url, headers=headers)
+                    else:
+                        transport_obj = StreamableHttpTransport(url=url, headers=headers)
+                    client = Client(transport_obj, timeout=connect_timeout)
+                    headers_provided = True
+                else:
+                    if headers and transport_type == "stdio":
+                        logger.debug(
+                            "Headers ignored for stdio transport",
+                            extra={"header_names": list(headers.keys())},
+                        )
+                    # Let FastMCP auto-detect transport
+                    client = Client(url, timeout=connect_timeout)
 
                 # Establish connection
                 await asyncio.wait_for(client.__aenter__(), timeout=connect_timeout)
 
-                # Infer transport type
-                transport = cls._infer_transport(url)
+                # Use inferred transport type
+                transport = transport_type
 
                 # Get server information
                 server_info: dict[str, Any] = {}
@@ -173,6 +208,7 @@ class ConnectionManager:
                         "prompts_executed": 0,
                         "errors": 0,
                     },
+                    headers_provided=headers_provided,
                 )
 
                 # Store globally

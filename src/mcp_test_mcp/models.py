@@ -52,6 +52,10 @@ class ConnectionState(BaseModel):
         },
         description="Usage statistics for this connection",
     )
+    headers_provided: bool = Field(
+        default=False,
+        description="Whether custom headers were provided (values not stored)",
+    )
 
 
 class ToolResponse(BaseModel):

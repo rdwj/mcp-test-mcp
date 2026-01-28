@@ -239,6 +239,7 @@ npx -y mcp-test-mcp --transport streamable-http --port 8080
 Once configured, test MCP servers through natural conversation:
 
 - **Connect:** "Connect to my MCP server at /path/to/server"
+- **Connect with auth:** "Connect to https://api.example.com/mcp with headers Authorization: Bearer my-token"
 - **Discover:** "What tools does it have?"
 - **Test:** "Call the echo tool with message 'Hello'"
 - **Status:** "What's the connection status?"
@@ -248,7 +249,7 @@ Once configured, test MCP servers through natural conversation:
 
 ### Connection Management
 
-- **connect_to_server**: Connect to a target MCP server (stdio or HTTP)
+- **connect_to_server**: Connect to a target MCP server (stdio or HTTP). Supports optional `headers` parameter for authenticated HTTP connections (e.g., `{"Authorization": "Bearer token"}`). Headers are ignored for stdio transport.
 - **disconnect**: Close active connection
 - **get_connection_status**: Check connection state and statistics
 

@@ -384,3 +384,162 @@ class TestConnectionManager:
         assert status is not None
         # Should have called Client constructor twice
         assert call_count == 2
+
+
+class TestConnectionManagerHeaders:
+    """Test suite for ConnectionManager headers functionality."""
+
+    @pytest.mark.asyncio
+    async def test_connect_with_headers_creates_explicit_transport(self):
+        """Test that headers create explicit StreamableHttpTransport."""
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client._session = None
+
+        headers = {"Authorization": "Bearer test-token"}
+
+        with patch("mcp_test_mcp.connection.Client") as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            with patch(
+                "mcp_test_mcp.connection.StreamableHttpTransport"
+            ) as mock_transport_class:
+                mock_transport = Mock()
+                mock_transport_class.return_value = mock_transport
+
+                state = await ConnectionManager.connect(
+                    "https://example.com/mcp", headers=headers
+                )
+
+                # Verify StreamableHttpTransport was created with headers
+                mock_transport_class.assert_called_once_with(
+                    url="https://example.com/mcp", headers=headers
+                )
+                # Verify Client was called with transport, not URL
+                mock_client_class.assert_called_once_with(mock_transport, timeout=30.0)
+
+        assert state.headers_provided is True
+        assert state.transport == "streamable-http"
+
+    @pytest.mark.asyncio
+    async def test_connect_with_headers_sse_transport(self):
+        """Test that headers create explicit SSETransport for SSE URLs."""
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client._session = None
+
+        headers = {"X-API-Key": "secret-key"}
+
+        with patch("mcp_test_mcp.connection.Client") as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            with patch("mcp_test_mcp.connection.SSETransport") as mock_transport_class:
+                mock_transport = Mock()
+                mock_transport_class.return_value = mock_transport
+
+                state = await ConnectionManager.connect(
+                    "https://example.com/sse", headers=headers
+                )
+
+                # Verify SSETransport was created with headers
+                mock_transport_class.assert_called_once_with(
+                    url="https://example.com/sse", headers=headers
+                )
+                # Verify Client was called with transport, not URL
+                mock_client_class.assert_called_once_with(mock_transport, timeout=30.0)
+
+        assert state.headers_provided is True
+        assert state.transport == "sse"
+
+    @pytest.mark.asyncio
+    async def test_connect_headers_ignored_for_stdio(self):
+        """Test that headers are silently ignored for stdio transport."""
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client._session = None
+
+        headers = {"Authorization": "Bearer ignored-token"}
+
+        with patch("mcp_test_mcp.connection.Client") as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            # Should NOT create explicit transport for stdio
+            with patch(
+                "mcp_test_mcp.connection.StreamableHttpTransport"
+            ) as mock_http_transport:
+                with patch("mcp_test_mcp.connection.SSETransport") as mock_sse_transport:
+                    state = await ConnectionManager.connect(
+                        "/path/to/server.py", headers=headers
+                    )
+
+                    # Neither transport class should be instantiated
+                    mock_http_transport.assert_not_called()
+                    mock_sse_transport.assert_not_called()
+
+                    # Client should be called with URL directly
+                    mock_client_class.assert_called_once_with(
+                        "/path/to/server.py", timeout=30.0
+                    )
+
+        # headers_provided should still be False since they were ignored
+        assert state.headers_provided is False
+        assert state.transport == "stdio"
+
+    @pytest.mark.asyncio
+    async def test_connect_empty_headers_treated_as_none(self):
+        """Test that empty headers dict is treated as None."""
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client._session = None
+
+        with patch("mcp_test_mcp.connection.Client") as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            with patch(
+                "mcp_test_mcp.connection.StreamableHttpTransport"
+            ) as mock_transport_class:
+                state = await ConnectionManager.connect(
+                    "https://example.com/mcp", headers={}
+                )
+
+                # Empty headers should NOT create explicit transport
+                mock_transport_class.assert_not_called()
+                # Client should be called with URL directly
+                mock_client_class.assert_called_once_with(
+                    "https://example.com/mcp", timeout=30.0
+                )
+
+        assert state.headers_provided is False
+
+    @pytest.mark.asyncio
+    async def test_connect_sets_headers_provided_flag(self):
+        """Test that headers_provided flag is set correctly."""
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client._session = None
+
+        # Test without headers
+        with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
+            state_no_headers = await ConnectionManager.connect("https://example.com/mcp")
+            assert state_no_headers.headers_provided is False
+
+        # Reset connection
+        await ConnectionManager.disconnect()
+
+        # Test with headers
+        with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
+            with patch("mcp_test_mcp.connection.StreamableHttpTransport"):
+                state_with_headers = await ConnectionManager.connect(
+                    "https://example.com/mcp", headers={"Auth": "token"}
+                )
+                assert state_with_headers.headers_provided is True

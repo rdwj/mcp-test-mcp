@@ -23,7 +23,7 @@ natural MCP server testing through Claude's conversation interface.
 
 import logging
 import time
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 from fastmcp import Context
 
@@ -37,7 +37,11 @@ logger = logging.getLogger(__name__)
 @mcp.tool
 async def connect_to_server(
     url: Annotated[str, "Server URL (http://..., https://...) or file path for stdio transport"],
-    ctx: Context
+    ctx: Context,
+    headers: Annotated[
+        Optional[dict[str, str]],
+        "Optional HTTP headers for authenticated connections. Ignored for stdio.",
+    ] = None,
 ) -> dict[str, Any]:
     """Connect to an MCP server for testing.
 
@@ -61,11 +65,19 @@ async def connect_to_server(
     start_time = time.perf_counter()
 
     try:
-        # User-facing progress update
-        await ctx.info(f"Connecting to MCP server at {url}")
-        # Detailed technical log
-        logger.info(f"Connecting to MCP server at: {url}")
-        state: ConnectionState = await ConnectionManager.connect(url)
+        # User-facing progress update with safe header info
+        if headers:
+            header_names = list(headers.keys())
+            await ctx.info(f"Connecting to MCP server at {url} with headers: {header_names}")
+            logger.info(
+                "Connecting to MCP server with custom headers",
+                extra={"url": url, "header_names": header_names},
+            )
+        else:
+            await ctx.info(f"Connecting to MCP server at {url}")
+            logger.info(f"Connecting to MCP server at: {url}")
+
+        state: ConnectionState = await ConnectionManager.connect(url, headers=headers)
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -89,6 +101,7 @@ async def connect_to_server(
                 "request_time_ms": round(elapsed_ms, 2),
                 "transport": state.transport,
                 "server_url": state.server_url,
+                "headers_provided": state.headers_provided,
             },
         }
 
@@ -106,9 +119,15 @@ async def connect_to_server(
         # Determine appropriate suggestion based on error
         suggestion = "Check that the server URL is correct and the server is running"
         if "timed out" in str(e).lower():
-            suggestion = "The connection timed out. Check server availability and network connectivity"
+            suggestion = (
+                "The connection timed out. "
+                "Check server availability and network connectivity"
+            )
         elif "file" in url.lower() or not url.startswith("http"):
-            suggestion = "For file paths, ensure the path is valid and the server executable has correct permissions"
+            suggestion = (
+                "For file paths, ensure the path is valid and "
+                "the server executable has correct permissions"
+            )
 
         return {
             "success": False,
