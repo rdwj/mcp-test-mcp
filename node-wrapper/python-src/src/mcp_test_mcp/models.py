@@ -52,6 +52,14 @@ class ConnectionState(BaseModel):
         },
         description="Usage statistics for this connection",
     )
+    headers_provided: bool = Field(
+        default=False,
+        description="Whether custom headers were provided (values not stored)",
+    )
+    auth_type: Optional[Literal["bearer", "oauth"]] = Field(
+        default=None,
+        description="Authentication type used (credential values never stored)",
+    )
 
 
 class ToolResponse(BaseModel):

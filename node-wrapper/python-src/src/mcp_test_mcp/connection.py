@@ -22,14 +22,23 @@ simplifying state management for testing workflows.
 """
 
 import asyncio
+import logging
 import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from fastmcp import Client
+from fastmcp.client.auth import BearerAuth, OAuth
+from fastmcp.client.transports import (
+    SSETransport,
+    StdioTransport,
+    StreamableHttpTransport,
+)
 from mcp.types import ServerCapabilities
 
 from .models import ConnectionState, ErrorDetail
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionError(Exception):
@@ -100,8 +109,78 @@ class ConnectionManager:
         # File paths use stdio transport
         return "stdio"
 
+    @staticmethod
+    def _build_auth(auth: Optional[Union[str, dict]]) -> Any:
+        """Convert auth parameter to FastMCP auth object.
+
+        Args:
+            auth: Authentication config. Accepts:
+                - None: No authentication
+                - str "oauth": Trigger OAuth flow
+                - str (other): Bearer token
+                - dict {"type": "bearer", "token": "..."}: Bearer token
+                - dict {"type": "oauth", ...}: OAuth with optional scopes/client_id/client_secret
+
+        Returns:
+            FastMCP auth object (BearerAuth, OAuth) or None.
+            Credential values are never logged.
+
+        Raises:
+            ValueError: If auth config is invalid
+        """
+        if auth is None:
+            return None
+        if isinstance(auth, str):
+            if auth == "oauth":
+                return OAuth()
+            return BearerAuth(token=auth)
+        if isinstance(auth, dict):
+            auth_type = auth.get("type")
+            if auth_type == "bearer":
+                token = auth.get("token")
+                if not token:
+                    raise ValueError("Auth dict with type 'bearer' requires 'token' key")
+                return BearerAuth(token=token)
+            if auth_type == "oauth":
+                return OAuth(
+                    scopes=auth.get("scopes"),
+                    client_id=auth.get("client_id"),
+                    client_secret=auth.get("client_secret"),
+                )
+            raise ValueError(f"Unknown auth type: {auth_type!r}. Expected 'bearer' or 'oauth'")
+        raise ValueError(f"auth must be a string or dict, got {type(auth).__name__}")
+
+    @staticmethod
+    def _build_stdio_transport(
+        command: str,
+        args: Optional[list[str]] = None,
+        env: Optional[dict[str, str]] = None,
+        cwd: Optional[str] = None,
+    ) -> StdioTransport:
+        """Build an explicit StdioTransport from command parameters.
+
+        Args:
+            command: The command to run (e.g. 'python', 'node', 'npx')
+            args: Arguments for the command
+            env: Environment variables for the subprocess
+            cwd: Working directory for the subprocess
+
+        Returns:
+            Configured StdioTransport instance
+        """
+        return StdioTransport(command=command, args=args or [], env=env, cwd=cwd)
+
     @classmethod
-    async def connect(cls, url: str) -> ConnectionState:
+    async def connect(
+        cls,
+        url: str,
+        headers: Optional[dict[str, str]] = None,
+        auth: Optional[Union[str, dict]] = None,
+        command: Optional[str] = None,
+        args: Optional[list[str]] = None,
+        env: Optional[dict[str, str]] = None,
+        cwd: Optional[str] = None,
+    ) -> ConnectionState:
         """Connect to an MCP server.
 
         Creates a FastMCP Client instance, establishes connection, and stores
@@ -112,12 +191,28 @@ class ConnectionManager:
             url: Server URL or file path
                 - HTTP/HTTPS URLs use streamable-http transport
                 - File paths use stdio transport
+            headers: Optional HTTP headers for authenticated connections.
+                     Only used for HTTP-based transports. Ignored for stdio.
+                     Header values are not logged or stored for security.
+            auth: Authentication config. Accepts:
+                - None: No authentication
+                - str "oauth": Trigger OAuth flow
+                - str (other): Bearer token
+                - dict {"type": "bearer", "token": "..."}: Bearer token
+                - dict {"type": "oauth", ...}: OAuth with optional params
+                Credential values are never logged or stored.
+            command: Explicit stdio command (e.g. 'python', 'node', 'npx').
+                     When provided, connects via StdioTransport.
+            args: Arguments for the stdio command.
+            env: Environment variables for the stdio subprocess.
+            cwd: Working directory for the stdio subprocess.
 
         Returns:
             ConnectionState with connection details and initial statistics
 
         Raises:
             ConnectionError: If connection fails
+            ValueError: If auth config is invalid
         """
         async with _connection.lock:
             # Close existing connection if any
@@ -127,36 +222,79 @@ class ConnectionManager:
             # Get timeout configuration
             connect_timeout = cls._get_timeout("MCP_TEST_CONNECT_TIMEOUT", 30.0)
 
+            # Normalize empty headers to None
+            if headers is not None and len(headers) == 0:
+                headers = None
+
+            # Build auth object if provided
+            auth_obj = cls._build_auth(auth)
+
             try:
-                # Create client - let FastMCP auto-detect transport
-                client = Client(url, timeout=connect_timeout)
+                # Track whether headers were actually used
+                headers_provided = False
+
+                # Branch 1: Explicit stdio via command parameter
+                if command is not None:
+                    transport_type = "stdio"
+                    if auth_obj is not None:
+                        logger.debug("Auth ignored for explicit stdio command transport")
+                    transport_obj = cls._build_stdio_transport(command, args, env, cwd)
+                    client = Client(transport_obj, timeout=connect_timeout)
+                else:
+                    # Infer transport type from URL
+                    transport_type = cls._infer_transport(url)
+
+                    # Branch 2: HTTP with custom headers (need explicit transport)
+                    if headers and transport_type in ("streamable-http", "sse"):
+                        transport_obj: Union[SSETransport, StreamableHttpTransport]
+                        if transport_type == "sse":
+                            transport_obj = SSETransport(url=url, headers=headers, auth=auth_obj)
+                        else:
+                            transport_obj = StreamableHttpTransport(url=url, headers=headers, auth=auth_obj)
+                        client = Client(transport_obj, timeout=connect_timeout)
+                        headers_provided = True
+                    # Branch 3: Auto-detect transport (with optional auth)
+                    else:
+                        if headers and transport_type == "stdio":
+                            logger.debug(
+                                "Headers ignored for stdio transport",
+                                extra={"header_names": list(headers.keys())},
+                            )
+                        if auth_obj is not None and transport_type == "stdio":
+                            logger.debug("Auth ignored for stdio transport")
+                        # Client handles auth directly for non-header cases
+                        client = Client(url, auth=auth_obj, timeout=connect_timeout)
 
                 # Establish connection
                 await asyncio.wait_for(client.__aenter__(), timeout=connect_timeout)
 
-                # Infer transport type
-                transport = cls._infer_transport(url)
+                # Use inferred/explicit transport type
+                transport = transport_type
+
+                # Determine auth type for state tracking
+                auth_type_value = None
+                if auth_obj is not None:
+                    auth_type_value = "oauth" if isinstance(auth_obj, OAuth) else "bearer"
 
                 # Get server information
                 server_info: dict[str, Any] = {}
                 try:
-                    # Try to get server info via initialization result
-                    if hasattr(client, "_session") and client._session:
-                        session = client._session
-                        if hasattr(session, "server_info"):
-                            info = session.server_info
-                            server_info = {
-                                "name": getattr(info, "name", None),
-                                "version": getattr(info, "version", None),
+                    # Get server info via public initialize_result API
+                    init_result = client.initialize_result
+                    if init_result is not None:
+                        info = init_result.serverInfo
+                        server_info = {
+                            "name": getattr(info, "name", None),
+                            "version": getattr(info, "version", None),
+                        }
+                        # Add capabilities if available
+                        caps: ServerCapabilities = init_result.capabilities
+                        if caps is not None:
+                            server_info["capabilities"] = {
+                                "tools": bool(getattr(caps, "tools", None)),
+                                "resources": bool(getattr(caps, "resources", None)),
+                                "prompts": bool(getattr(caps, "prompts", None)),
                             }
-                            # Add capabilities if available
-                            if hasattr(session, "server_capabilities"):
-                                caps: ServerCapabilities = session.server_capabilities
-                                server_info["capabilities"] = {
-                                    "tools": bool(getattr(caps, "tools", None)),
-                                    "resources": bool(getattr(caps, "resources", None)),
-                                    "prompts": bool(getattr(caps, "prompts", None)),
-                                }
                 except Exception:
                     # If we can't get server info, continue without it
                     pass
@@ -173,6 +311,8 @@ class ConnectionManager:
                         "prompts_executed": 0,
                         "errors": 0,
                     },
+                    headers_provided=headers_provided,
+                    auth_type=auth_type_value,
                 )
 
                 # Store globally

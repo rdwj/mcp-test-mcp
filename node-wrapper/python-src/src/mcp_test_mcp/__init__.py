@@ -1,5 +1,5 @@
 """
-mcp-test-mcp: A test MCP server implementation using FastMCP v2
+mcp-test-mcp: A test MCP server implementation using FastMCP
 
 This package provides a simple MCP server for testing and demonstration purposes.
 It includes basic tools for echoing messages and performing arithmetic operations.
@@ -17,7 +17,7 @@ Example usage:
         print(f"Version: {__version__}")
 """
 
-__version__ = "0.1.2"
+__version__ = "0.4.0"
 
 __all__ = [
     "__version__",
