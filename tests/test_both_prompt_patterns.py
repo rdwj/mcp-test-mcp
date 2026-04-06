@@ -10,10 +10,14 @@ Both patterns use the same execute_prompt_with_llm tool.
 
 import asyncio
 import json
+
+import pytest
+
 from mcp_test_mcp.connection import ConnectionManager
 from mcp_test_mcp.tools.llm import execute_prompt_with_llm
 
 
+@pytest.mark.skip(reason="Integration demo that requires a live OpenShift MCP server")
 async def test_template_variable_pattern():
     """Test prompts with template variables that need manual filling."""
     print("=" * 80)
