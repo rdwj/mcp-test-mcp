@@ -50,7 +50,15 @@ class TestConnectToServer:
             result = await connect_to_server("http://test.example.com/mcp", ctx=mock_ctx)
 
             # Verify the call
-            mock_connect.assert_called_once_with("http://test.example.com/mcp", headers=None)
+            mock_connect.assert_called_once_with(
+                "http://test.example.com/mcp",
+                headers=None,
+                auth=None,
+                command=None,
+                args=None,
+                env=None,
+                cwd=None,
+            )
 
             # Verify response structure
             assert result["success"] is True
@@ -132,7 +140,15 @@ class TestConnectToServer:
             result = await connect_to_server("/path/to/server", ctx=mock_ctx)
 
             # Verify the call
-            mock_connect.assert_called_once_with("/path/to/server", headers=None)
+            mock_connect.assert_called_once_with(
+                "/path/to/server",
+                headers=None,
+                auth=None,
+                command=None,
+                args=None,
+                env=None,
+                cwd=None,
+            )
 
             # Verify transport is stdio
             assert result["success"] is True
@@ -144,7 +160,7 @@ class TestConnectToServer:
         with patch.object(
             ConnectionManager, "connect", new_callable=AsyncMock
         ) as mock_connect:
-            mock_connect.side_effect = ValueError("Unexpected error")
+            mock_connect.side_effect = RuntimeError("Unexpected error")
 
             result = await connect_to_server("http://test.example.com/mcp", ctx=mock_ctx)
 
@@ -369,3 +385,148 @@ class TestConnectionLifecycle:
                 result2["connection"]["server_url"]
                 == "http://new-server.example.com/mcp"
             )
+
+
+class TestConnectToServerAuth:
+    """Tests for connect_to_server auth parameters."""
+
+    @pytest.mark.asyncio
+    async def test_connect_with_bearer_token(self, mock_connection_state, mock_ctx):
+        """Verify auth='my-token' is passed through to ConnectionManager.connect."""
+        mock_connection_state.auth_type = "bearer"
+
+        with patch.object(
+            ConnectionManager, "connect", new_callable=AsyncMock
+        ) as mock_connect:
+            mock_connect.return_value = mock_connection_state
+
+            result = await connect_to_server(
+                "https://example.com/mcp", ctx=mock_ctx, auth="my-token"
+            )
+
+            mock_connect.assert_called_once_with(
+                "https://example.com/mcp",
+                headers=None,
+                auth="my-token",
+                command=None,
+                args=None,
+                env=None,
+                cwd=None,
+            )
+            assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_connect_with_oauth(self, mock_connection_state, mock_ctx):
+        """Verify auth='oauth' is passed through to ConnectionManager.connect."""
+        mock_connection_state.auth_type = "oauth"
+
+        with patch.object(
+            ConnectionManager, "connect", new_callable=AsyncMock
+        ) as mock_connect:
+            mock_connect.return_value = mock_connection_state
+
+            result = await connect_to_server(
+                "https://example.com/mcp", ctx=mock_ctx, auth="oauth"
+            )
+
+            mock_connect.assert_called_once_with(
+                "https://example.com/mcp",
+                headers=None,
+                auth="oauth",
+                command=None,
+                args=None,
+                env=None,
+                cwd=None,
+            )
+            assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_connect_with_invalid_auth(self, mock_ctx):
+        """Verify ValueError from bad auth config produces error response."""
+        with patch.object(
+            ConnectionManager, "connect", new_callable=AsyncMock
+        ) as mock_connect:
+            mock_connect.side_effect = ValueError("Unknown auth type: 'bad'")
+
+            result = await connect_to_server(
+                "https://example.com/mcp", ctx=mock_ctx, auth={"type": "bad"}
+            )
+
+            assert result["success"] is False
+            assert result["error"]["error_type"] == "invalid_arguments"
+            assert "Unknown auth type" in result["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_connect_auth_type_in_metadata(self, mock_connection_state, mock_ctx):
+        """Verify auth_type appears in success metadata."""
+        mock_connection_state.auth_type = "bearer"
+
+        with patch.object(
+            ConnectionManager, "connect", new_callable=AsyncMock
+        ) as mock_connect:
+            mock_connect.return_value = mock_connection_state
+
+            result = await connect_to_server(
+                "https://example.com/mcp", ctx=mock_ctx, auth="my-token"
+            )
+
+            assert result["metadata"]["auth_type"] == "bearer"
+
+
+class TestConnectToServerStdio:
+    """Tests for connect_to_server explicit stdio parameters."""
+
+    @pytest.mark.asyncio
+    async def test_connect_with_command(self, mock_connection_state, mock_ctx):
+        """Verify command/args/env/cwd are passed through to ConnectionManager.connect."""
+        mock_connection_state.transport = "stdio"
+        mock_connection_state.auth_type = None
+
+        with patch.object(
+            ConnectionManager, "connect", new_callable=AsyncMock
+        ) as mock_connect:
+            mock_connect.return_value = mock_connection_state
+
+            result = await connect_to_server(
+                "unused-url",
+                ctx=mock_ctx,
+                command="npx",
+                args=["-y", "some-package"],
+                env={"NODE_ENV": "test"},
+                cwd="/tmp/project",
+            )
+
+            mock_connect.assert_called_once_with(
+                "unused-url",
+                headers=None,
+                auth=None,
+                command="npx",
+                args=["-y", "some-package"],
+                env={"NODE_ENV": "test"},
+                cwd="/tmp/project",
+            )
+            assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_connect_command_progress_message(self, mock_connection_state, mock_ctx):
+        """Verify ctx.info is called with command info in the message."""
+        mock_connection_state.transport = "stdio"
+        mock_connection_state.auth_type = None
+
+        with patch.object(
+            ConnectionManager, "connect", new_callable=AsyncMock
+        ) as mock_connect:
+            mock_connect.return_value = mock_connection_state
+
+            await connect_to_server(
+                "unused-url",
+                ctx=mock_ctx,
+                command="python",
+                args=["-m", "my_server"],
+            )
+
+            # Find the first ctx.info call (the progress message)
+            first_info_call = mock_ctx.info.call_args_list[0]
+            msg = first_info_call[0][0]
+            assert "python -m my_server" in msg
+            assert "Connecting via stdio command" in msg

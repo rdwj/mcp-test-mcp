@@ -23,7 +23,7 @@ natural MCP server testing through Claude's conversation interface.
 
 import logging
 import time
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Optional, Union
 
 from fastmcp import Context
 
@@ -42,12 +42,48 @@ async def connect_to_server(
         Optional[dict[str, str]],
         "Optional HTTP headers for authenticated connections. Ignored for stdio.",
     ] = None,
+    auth: Annotated[
+        Optional[Union[str, dict]],
+        "Authentication config. Bearer token string, 'oauth', "
+        "{'type': 'bearer', 'token': '...'}, or "
+        "{'type': 'oauth', 'scopes': [...], 'client_id': '...', 'client_secret': '...'}. "
+        "Credentials are never logged or stored.",
+    ] = None,
+    command: Annotated[
+        Optional[str],
+        "Explicit stdio command to run (e.g. 'python', 'node', 'npx'). "
+        "When provided, connects via StdioTransport instead of auto-detection.",
+    ] = None,
+    args: Annotated[
+        Optional[list[str]],
+        "Arguments for the stdio command (e.g. ['-y', 'some-package']).",
+    ] = None,
+    env: Annotated[
+        Optional[dict[str, str]],
+        "Environment variables for the stdio subprocess.",
+    ] = None,
+    cwd: Annotated[
+        Optional[str],
+        "Working directory for the stdio subprocess.",
+    ] = None,
 ) -> dict[str, Any]:
     """Connect to an MCP server for testing.
 
     Establishes a connection to a target MCP server using the appropriate
-    transport protocol (stdio for file paths, streamable-http for URLs).
+    transport protocol (stdio for file paths, streamable-http for URLs,
+    or explicit stdio via command parameter).
     Only one connection can be active at a time.
+
+    Args:
+        url: Server URL or file path for auto-detected transport.
+        ctx: FastMCP context for progress reporting.
+        headers: Optional HTTP headers. Ignored for stdio transport.
+        auth: Authentication config (bearer token, OAuth, or dict).
+              Credential values are never logged or stored.
+        command: Explicit stdio command to run (bypasses URL auto-detection).
+        args: Arguments for the stdio command.
+        env: Environment variables for the stdio subprocess.
+        cwd: Working directory for the stdio subprocess.
 
     Returns:
         Dictionary with connection details including:
@@ -65,19 +101,39 @@ async def connect_to_server(
     start_time = time.perf_counter()
 
     try:
-        # User-facing progress update with safe header info
-        if headers:
-            header_names = list(headers.keys())
-            await ctx.info(f"Connecting to MCP server at {url} with headers: {header_names}")
-            logger.info(
-                "Connecting to MCP server with custom headers",
-                extra={"url": url, "header_names": header_names},
-            )
-        else:
-            await ctx.info(f"Connecting to MCP server at {url}")
-            logger.info(f"Connecting to MCP server at: {url}")
+        # Determine auth type for logging (never log credential values)
+        auth_type_str = None
+        if auth is not None:
+            if isinstance(auth, str):
+                auth_type_str = "oauth" if auth == "oauth" else "bearer"
+            elif isinstance(auth, dict):
+                auth_type_str = auth.get("type", "unknown")
 
-        state: ConnectionState = await ConnectionManager.connect(url, headers=headers)
+        # Build progress message
+        if command:
+            cmd_display = f"{command} {' '.join(args or [])}"
+            log_msg = f"Connecting via stdio command: {cmd_display}"
+        elif headers:
+            header_names = list(headers.keys())
+            log_msg = f"Connecting to MCP server at {url} with headers: {header_names}"
+        else:
+            log_msg = f"Connecting to MCP server at {url}"
+
+        if auth_type_str:
+            log_msg += f" (auth: {auth_type_str})"
+
+        await ctx.info(log_msg)
+        logger.info(log_msg)
+
+        state: ConnectionState = await ConnectionManager.connect(
+            url,
+            headers=headers,
+            auth=auth,
+            command=command,
+            args=args,
+            env=env,
+            cwd=cwd,
+        )
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -102,6 +158,28 @@ async def connect_to_server(
                 "transport": state.transport,
                 "server_url": state.server_url,
                 "headers_provided": state.headers_provided,
+                "auth_type": state.auth_type,
+            },
+        }
+
+    except ValueError as e:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000
+        await ctx.error(f"Invalid auth configuration: {str(e)}")
+        logger.error(f"Invalid auth configuration: {str(e)}")
+
+        return {
+            "success": False,
+            "error": {
+                "error_type": "invalid_arguments",
+                "message": str(e),
+                "details": {"auth_type": auth_type_str},
+                "suggestion": "Check auth parameter format. Use a bearer token string, 'oauth', "
+                "or a dict with 'type' key set to 'bearer' or 'oauth'.",
+            },
+            "connection": None,
+            "metadata": {
+                "request_time_ms": round(elapsed_ms, 2),
+                "attempted_url": url,
             },
         }
 

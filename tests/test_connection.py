@@ -413,9 +413,9 @@ class TestConnectionManagerHeaders:
                     "https://example.com/mcp", headers=headers
                 )
 
-                # Verify StreamableHttpTransport was created with headers
+                # Verify StreamableHttpTransport was created with headers and auth
                 mock_transport_class.assert_called_once_with(
-                    url="https://example.com/mcp", headers=headers
+                    url="https://example.com/mcp", headers=headers, auth=None
                 )
                 # Verify Client was called with transport, not URL
                 mock_client_class.assert_called_once_with(mock_transport, timeout=30.0)
@@ -445,9 +445,9 @@ class TestConnectionManagerHeaders:
                     "https://example.com/sse", headers=headers
                 )
 
-                # Verify SSETransport was created with headers
+                # Verify SSETransport was created with headers and auth
                 mock_transport_class.assert_called_once_with(
-                    url="https://example.com/sse", headers=headers
+                    url="https://example.com/sse", headers=headers, auth=None
                 )
                 # Verify Client was called with transport, not URL
                 mock_client_class.assert_called_once_with(mock_transport, timeout=30.0)
@@ -482,9 +482,9 @@ class TestConnectionManagerHeaders:
                     mock_http_transport.assert_not_called()
                     mock_sse_transport.assert_not_called()
 
-                    # Client should be called with URL directly
+                    # Client should be called with URL directly (plus auth=None)
                     mock_client_class.assert_called_once_with(
-                        "/path/to/server.py", timeout=30.0
+                        "/path/to/server.py", auth=None, timeout=30.0
                     )
 
         # headers_provided should still be False since they were ignored
@@ -512,9 +512,9 @@ class TestConnectionManagerHeaders:
 
                 # Empty headers should NOT create explicit transport
                 mock_transport_class.assert_not_called()
-                # Client should be called with URL directly
+                # Client should be called with URL directly (plus auth=None)
                 mock_client_class.assert_called_once_with(
-                    "https://example.com/mcp", timeout=30.0
+                    "https://example.com/mcp", auth=None, timeout=30.0
                 )
 
         assert state.headers_provided is False
@@ -543,3 +543,209 @@ class TestConnectionManagerHeaders:
                     "https://example.com/mcp", headers={"Auth": "token"}
                 )
                 assert state_with_headers.headers_provided is True
+
+
+class TestConnectionManagerAuth:
+    """Test suite for ConnectionManager auth functionality."""
+
+    def test_build_auth_none(self):
+        """_build_auth(None) returns None."""
+        assert ConnectionManager._build_auth(None) is None
+
+    def test_build_auth_bearer_string(self):
+        """_build_auth with a token string returns BearerAuth."""
+        from fastmcp.client.auth import BearerAuth
+
+        result = ConnectionManager._build_auth("my-token")
+        assert isinstance(result, BearerAuth)
+
+    def test_build_auth_oauth_string(self):
+        """_build_auth('oauth') returns OAuth."""
+        from fastmcp.client.auth import OAuth
+
+        result = ConnectionManager._build_auth("oauth")
+        assert isinstance(result, OAuth)
+
+    def test_build_auth_bearer_dict(self):
+        """_build_auth with bearer dict returns BearerAuth."""
+        from fastmcp.client.auth import BearerAuth
+
+        result = ConnectionManager._build_auth({"type": "bearer", "token": "tk"})
+        assert isinstance(result, BearerAuth)
+
+    def test_build_auth_oauth_dict(self):
+        """_build_auth with oauth dict returns OAuth."""
+        from fastmcp.client.auth import OAuth
+
+        result = ConnectionManager._build_auth({"type": "oauth", "scopes": ["read"]})
+        assert isinstance(result, OAuth)
+
+    def test_build_auth_bearer_dict_missing_token(self):
+        """_build_auth with bearer dict missing token raises ValueError."""
+        with pytest.raises(ValueError, match="requires 'token' key"):
+            ConnectionManager._build_auth({"type": "bearer"})
+
+    def test_build_auth_unknown_type(self):
+        """_build_auth with unknown type raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown auth type"):
+            ConnectionManager._build_auth({"type": "custom"})
+
+    def test_build_auth_invalid_type(self):
+        """_build_auth with non-string/dict raises ValueError."""
+        with pytest.raises(ValueError, match="auth must be a string or dict"):
+            ConnectionManager._build_auth(123)
+
+    @pytest.mark.asyncio
+    async def test_connect_with_bearer_auth(self):
+        """Verify auth kwarg is passed to Client for bearer token."""
+        from fastmcp.client.auth import BearerAuth
+
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client.initialize_result = None
+
+        with patch("mcp_test_mcp.connection.Client") as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            await ConnectionManager.connect(
+                "https://example.com/mcp", auth="my-token"
+            )
+
+            # Client should receive auth kwarg
+            call_kwargs = mock_client_class.call_args
+            assert isinstance(call_kwargs.kwargs.get("auth"), BearerAuth)
+
+    @pytest.mark.asyncio
+    async def test_connect_with_oauth_auth(self):
+        """Verify OAuth instance is passed to Client."""
+        from fastmcp.client.auth import OAuth
+
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client.initialize_result = None
+
+        with patch("mcp_test_mcp.connection.Client") as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            await ConnectionManager.connect(
+                "https://example.com/mcp", auth="oauth"
+            )
+
+            call_kwargs = mock_client_class.call_args
+            assert isinstance(call_kwargs.kwargs.get("auth"), OAuth)
+
+    @pytest.mark.asyncio
+    async def test_connect_auth_type_tracked(self):
+        """Verify state.auth_type is set correctly."""
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client.initialize_result = None
+
+        with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
+            state = await ConnectionManager.connect(
+                "https://example.com/mcp", auth="my-token"
+            )
+            assert state.auth_type == "bearer"
+
+        await ConnectionManager.disconnect()
+
+        with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
+            state = await ConnectionManager.connect(
+                "https://example.com/mcp", auth="oauth"
+            )
+            assert state.auth_type == "oauth"
+
+
+class TestConnectionManagerExplicitStdio:
+    """Test suite for ConnectionManager explicit stdio transport."""
+
+    @pytest.mark.asyncio
+    async def test_connect_explicit_command(self):
+        """Verify StdioTransport is created with correct args."""
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client.initialize_result = None
+
+        mock_transport = Mock()
+
+        with patch("mcp_test_mcp.connection.Client") as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            with patch(
+                "mcp_test_mcp.connection.StdioTransport"
+            ) as mock_stdio_class:
+                mock_stdio_class.return_value = mock_transport
+
+                await ConnectionManager.connect(
+                    "unused-url",
+                    command="python",
+                    args=["-m", "my_server"],
+                )
+
+                mock_stdio_class.assert_called_once_with(
+                    command="python", args=["-m", "my_server"], env=None, cwd=None
+                )
+                mock_client_class.assert_called_once_with(
+                    mock_transport, timeout=30.0
+                )
+
+    @pytest.mark.asyncio
+    async def test_connect_explicit_command_with_env_cwd(self):
+        """Verify env and cwd are passed through."""
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client.initialize_result = None
+
+        mock_transport = Mock()
+
+        with patch("mcp_test_mcp.connection.Client") as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            with patch(
+                "mcp_test_mcp.connection.StdioTransport"
+            ) as mock_stdio_class:
+                mock_stdio_class.return_value = mock_transport
+
+                await ConnectionManager.connect(
+                    "unused-url",
+                    command="node",
+                    args=["server.js"],
+                    env={"NODE_ENV": "test"},
+                    cwd="/tmp/project",
+                )
+
+                mock_stdio_class.assert_called_once_with(
+                    command="node",
+                    args=["server.js"],
+                    env={"NODE_ENV": "test"},
+                    cwd="/tmp/project",
+                )
+
+    @pytest.mark.asyncio
+    async def test_connect_explicit_command_transport_type(self):
+        """Verify state.transport is 'stdio' for explicit command."""
+        mock_client = Mock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_client.is_connected = Mock(return_value=True)
+        mock_client.initialize_result = None
+
+        with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
+            with patch("mcp_test_mcp.connection.StdioTransport"):
+                state = await ConnectionManager.connect(
+                    "unused-url",
+                    command="python",
+                    args=["-m", "server"],
+                )
+
+                assert state.transport == "stdio"
