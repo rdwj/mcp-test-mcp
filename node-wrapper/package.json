@@ -7,6 +7,7 @@
     "mcp-test-mcp": "./index.js"
   },
   "scripts": {
+    "prepack": "find python-src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; find python-src -type d -name '*.egg-info' -exec rm -rf {} + 2>/dev/null; find python-src -type d -name build -exec rm -rf {} + 2>/dev/null; true",
     "postinstall": "node scripts/postinstall.js"
   },
   "keywords": [
