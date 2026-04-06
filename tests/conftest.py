@@ -7,11 +7,28 @@ including a mock MCP server with sample tools, resources, and prompts.
 import asyncio
 import json
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastmcp import Context, FastMCP
 
 from mcp_test_mcp.connection import ConnectionManager
+
+
+@pytest.fixture
+def mock_ctx():
+    """Create a mock FastMCP Context for testing tool functions.
+
+    FastMCP 3.x requires a Context parameter for all tool functions.
+    This fixture provides a mock that satisfies ctx.info(), ctx.error(),
+    ctx.debug(), etc. calls without requiring a real MCP session.
+    """
+    ctx = MagicMock(spec=Context)
+    ctx.info = AsyncMock()
+    ctx.error = AsyncMock()
+    ctx.debug = AsyncMock()
+    ctx.warning = AsyncMock()
+    return ctx
 
 
 @pytest.fixture

@@ -62,14 +62,14 @@ def mock_resources_result():
 class TestListResources:
     """Test suite for list_resources tool."""
 
-    async def test_list_resources_not_connected(self):
+    async def test_list_resources_not_connected(self, mock_ctx):
         """Test list_resources returns error when not connected."""
         with patch.object(ConnectionManager, "require_connection") as mock_require:
             mock_require.side_effect = ConnectionError(
                 "Not connected to any MCP server. Use connect() first."
             )
 
-            result = await list_resources()
+            result = await list_resources(ctx=mock_ctx)
 
             # Verify error response
             assert result["success"] is False
@@ -80,14 +80,14 @@ class TestListResources:
             assert "request_time_ms" in result["metadata"]
 
     async def test_list_resources_success(
-        self, mock_connection_state, mock_client, mock_resources_result
+        self, mock_connection_state, mock_client, mock_resources_result, mock_ctx
     ):
         """Test list_resources successfully retrieves resources from mock server."""
         with patch.object(ConnectionManager, "require_connection") as mock_require:
             mock_client.list_resources = AsyncMock(return_value=mock_resources_result)
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await list_resources()
+            result = await list_resources(ctx=mock_ctx)
 
             # Verify the call
             mock_client.list_resources.assert_called_once()
@@ -119,7 +119,7 @@ class TestListResources:
             assert "request_time_ms" in metadata
             assert metadata["request_time_ms"] > 0
 
-    async def test_list_resources_empty_server(self, mock_connection_state, mock_client):
+    async def test_list_resources_empty_server(self, mock_connection_state, mock_client, mock_ctx):
         """Test list_resources handles server with no resources gracefully."""
         # client.list_resources() returns a list directly
         empty_result = []
@@ -128,7 +128,7 @@ class TestListResources:
             mock_client.list_resources = AsyncMock(return_value=empty_result)
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await list_resources()
+            result = await list_resources(ctx=mock_ctx)
 
             # Should still succeed with empty list
             assert result["success"] is True
@@ -139,14 +139,14 @@ class TestListResources:
 class TestReadResource:
     """Test suite for read_resource tool."""
 
-    async def test_read_resource_not_connected(self):
+    async def test_read_resource_not_connected(self, mock_ctx):
         """Test read_resource returns error when not connected."""
         with patch.object(ConnectionManager, "require_connection") as mock_require:
             mock_require.side_effect = ConnectionError(
                 "Not connected to any MCP server. Use connect() first."
             )
 
-            result = await read_resource("config://settings")
+            result = await read_resource("config://settings", ctx=mock_ctx)
 
             # Verify error response
             assert result["success"] is False
@@ -156,22 +156,20 @@ class TestReadResource:
             assert result["resource"] is None
             assert "request_time_ms" in result["metadata"]
 
-    async def test_read_resource_success(self, mock_connection_state, mock_client):
+    async def test_read_resource_success(self, mock_connection_state, mock_client, mock_ctx):
         """Test read_resource successfully reads resource from mock server."""
-        # Mock resource read result
-        resource_result = MagicMock()
+        # Mock resource read result -- client.read_resource() returns a list directly
         content_item = MagicMock()
         content_item.text = '{"theme": "dark", "version": "1.0"}'
         content_item.mimeType = "application/json"
-        resource_result.contents = [content_item]
 
         with patch.object(ConnectionManager, "require_connection") as mock_require, patch.object(
             ConnectionManager, "increment_stat"
         ) as mock_increment:
-            mock_client.read_resource = AsyncMock(return_value=resource_result)
+            mock_client.read_resource = AsyncMock(return_value=[content_item])
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await read_resource("config://settings")
+            result = await read_resource("config://settings", ctx=mock_ctx)
 
             # Verify the call
             mock_client.read_resource.assert_called_once_with("config://settings")
@@ -197,7 +195,7 @@ class TestReadResource:
             assert "server_url" in metadata
             assert "connection_statistics" in metadata
 
-    async def test_read_resource_not_found(self, mock_connection_state, mock_client):
+    async def test_read_resource_not_found(self, mock_connection_state, mock_client, mock_ctx):
         """Test read_resource handles non-existent resource correctly."""
         with patch.object(ConnectionManager, "require_connection") as mock_require, patch.object(
             ConnectionManager, "increment_stat"
@@ -207,7 +205,7 @@ class TestReadResource:
             )
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await read_resource("nonexistent://resource")
+            result = await read_resource("nonexistent://resource", ctx=mock_ctx)
 
             # Should return error
             assert result["success"] is False
@@ -220,13 +218,11 @@ class TestReadResource:
             # Verify error counter was incremented
             mock_increment.assert_called_once_with("errors")
 
-    async def test_read_resource_multiple_reads(self, mock_connection_state, mock_client):
+    async def test_read_resource_multiple_reads(self, mock_connection_state, mock_client, mock_ctx):
         """Test that multiple resource reads work correctly and update statistics."""
-        # Mock resource read result
-        resource_result = MagicMock()
+        # Mock resource read result -- client.read_resource() returns a list directly
         content_item = MagicMock()
         content_item.text = '{"data": "test"}'
-        resource_result.contents = [content_item]
 
         # Create a stateful mock for statistics
         stats_tracker = {"resources_accessed": 0}
@@ -240,16 +236,16 @@ class TestReadResource:
             ConnectionManager, "increment_stat"
         ) as mock_increment:
             mock_increment.side_effect = increment_stat
-            mock_client.read_resource = AsyncMock(return_value=resource_result)
+            mock_client.read_resource = AsyncMock(return_value=[content_item])
             mock_require.return_value = (mock_client, mock_connection_state)
 
             # Read first resource
-            result1 = await read_resource("config://settings")
+            result1 = await read_resource("config://settings", ctx=mock_ctx)
             assert result1["success"] is True
             stats1 = result1["metadata"]["connection_statistics"]["resources_accessed"]
 
             # Read second resource
-            result2 = await read_resource("data://users")
+            result2 = await read_resource("data://users", ctx=mock_ctx)
             assert result2["success"] is True
             stats2 = result2["metadata"]["connection_statistics"]["resources_accessed"]
 
@@ -257,7 +253,7 @@ class TestReadResource:
             assert stats2 == stats1 + 1
 
     async def test_read_resource_error_increments_error_stat(
-        self, mock_connection_state, mock_client
+        self, mock_connection_state, mock_client, mock_ctx
     ):
         """Test that resource read errors increment the error statistic."""
         with patch.object(ConnectionManager, "require_connection") as mock_require, patch.object(
@@ -268,7 +264,7 @@ class TestReadResource:
             )
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await read_resource("nonexistent://resource")
+            result = await read_resource("nonexistent://resource", ctx=mock_ctx)
             assert result["success"] is False
 
             # Verify error counter was incremented

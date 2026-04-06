@@ -46,8 +46,7 @@ def mock_tools_result():
     tool1 = MagicMock(spec=McpTool)
     tool1.name = "add"
     tool1.description = "Adds two numbers"
-    tool1.inputSchema = MagicMock()
-    tool1.inputSchema.model_dump.return_value = {
+    tool1.inputSchema = {
         "type": "object",
         "properties": {
             "a": {"type": "number", "description": "First number"},
@@ -59,8 +58,7 @@ def mock_tools_result():
     tool2 = MagicMock(spec=McpTool)
     tool2.name = "echo"
     tool2.description = "Echoes a message"
-    tool2.inputSchema = MagicMock()
-    tool2.inputSchema.model_dump.return_value = {
+    tool2.inputSchema = {
         "type": "object",
         "properties": {
             "message": {"type": "string", "description": "Message to echo"},
@@ -77,7 +75,7 @@ class TestListTools:
 
     @pytest.mark.asyncio
     async def test_list_tools_success(
-        self, mock_connection_state, mock_client, mock_tools_result
+        self, mock_connection_state, mock_client, mock_tools_result, mock_ctx
     ):
         """Test successful tool listing."""
         with patch.object(
@@ -86,7 +84,7 @@ class TestListTools:
             mock_client.list_tools = AsyncMock(return_value=mock_tools_result)
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await list_tools()
+            result = await list_tools(ctx=mock_ctx)
 
             # Verify the call
             mock_client.list_tools.assert_called_once()
@@ -116,7 +114,7 @@ class TestListTools:
             assert result["metadata"]["server_name"] == "test-server"
 
     @pytest.mark.asyncio
-    async def test_list_tools_not_connected(self):
+    async def test_list_tools_not_connected(self, mock_ctx):
         """Test listing tools when not connected."""
         with patch.object(
             ConnectionManager, "require_connection"
@@ -125,7 +123,7 @@ class TestListTools:
                 "Not connected to any MCP server. Use connect() first."
             )
 
-            result = await list_tools()
+            result = await list_tools(ctx=mock_ctx)
 
             # Verify error response
             assert result["success"] is False
@@ -137,7 +135,7 @@ class TestListTools:
 
     @pytest.mark.asyncio
     async def test_list_tools_execution_error(
-        self, mock_connection_state, mock_client
+        self, mock_connection_state, mock_client, mock_ctx
     ):
         """Test handling of execution errors when listing tools."""
         with patch.object(
@@ -150,7 +148,7 @@ class TestListTools:
             )
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await list_tools()
+            result = await list_tools(ctx=mock_ctx)
 
             # Verify error response
             assert result["success"] is False
@@ -163,7 +161,7 @@ class TestListTools:
 
     @pytest.mark.asyncio
     async def test_list_tools_empty_result(
-        self, mock_connection_state, mock_client
+        self, mock_connection_state, mock_client, mock_ctx
     ):
         """Test listing tools when server has no tools."""
         # client.list_tools() returns a list directly
@@ -175,7 +173,7 @@ class TestListTools:
             mock_client.list_tools = AsyncMock(return_value=empty_result)
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await list_tools()
+            result = await list_tools(ctx=mock_ctx)
 
             # Verify response
             assert result["success"] is True
@@ -187,7 +185,7 @@ class TestCallTool:
     """Tests for call_tool tool."""
 
     @pytest.mark.asyncio
-    async def test_call_tool_success(self, mock_connection_state, mock_client):
+    async def test_call_tool_success(self, mock_connection_state, mock_client, mock_ctx):
         """Test successful tool execution."""
         # Mock tool result
         tool_result = MagicMock()
@@ -203,7 +201,7 @@ class TestCallTool:
             mock_client.call_tool = AsyncMock(return_value=tool_result)
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await call_tool("add", {"a": 5, "b": 3})
+            result = await call_tool("add", {"a": 5, "b": 3}, ctx=mock_ctx)
 
             # Verify the call
             mock_client.call_tool.assert_called_once_with("add", {"a": 5, "b": 3})
@@ -230,7 +228,7 @@ class TestCallTool:
             assert "connection_statistics" in result["metadata"]
 
     @pytest.mark.asyncio
-    async def test_call_tool_not_connected(self):
+    async def test_call_tool_not_connected(self, mock_ctx):
         """Test calling a tool when not connected."""
         with patch.object(
             ConnectionManager, "require_connection"
@@ -239,7 +237,7 @@ class TestCallTool:
                 "Not connected to any MCP server. Use connect() first."
             )
 
-            result = await call_tool("add", {"a": 5, "b": 3})
+            result = await call_tool("add", {"a": 5, "b": 3}, ctx=mock_ctx)
 
             # Verify error response
             assert result["success"] is False
@@ -249,7 +247,7 @@ class TestCallTool:
             assert result["tool_call"] is None
 
     @pytest.mark.asyncio
-    async def test_call_tool_not_found(self, mock_connection_state, mock_client):
+    async def test_call_tool_not_found(self, mock_connection_state, mock_client, mock_ctx):
         """Test calling a tool that doesn't exist."""
         with patch.object(
             ConnectionManager, "require_connection"
@@ -261,7 +259,7 @@ class TestCallTool:
             )
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await call_tool("invalid_tool", {})
+            result = await call_tool("invalid_tool", {}, ctx=mock_ctx)
 
             # Verify error response
             assert result["success"] is False
@@ -274,7 +272,7 @@ class TestCallTool:
 
     @pytest.mark.asyncio
     async def test_call_tool_invalid_arguments(
-        self, mock_connection_state, mock_client
+        self, mock_connection_state, mock_client, mock_ctx
     ):
         """Test calling a tool with invalid arguments."""
         with patch.object(
@@ -287,7 +285,7 @@ class TestCallTool:
             )
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await call_tool("add", {"a": "invalid", "b": 3})
+            result = await call_tool("add", {"a": "invalid", "b": 3}, ctx=mock_ctx)
 
             # Verify error response
             assert result["success"] is False
@@ -300,7 +298,7 @@ class TestCallTool:
 
     @pytest.mark.asyncio
     async def test_call_tool_execution_error(
-        self, mock_connection_state, mock_client
+        self, mock_connection_state, mock_client, mock_ctx
     ):
         """Test handling of tool execution errors."""
         with patch.object(
@@ -313,7 +311,7 @@ class TestCallTool:
             )
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await call_tool("divide", {"a": 10, "b": 0})
+            result = await call_tool("divide", {"a": 10, "b": 0}, ctx=mock_ctx)
 
             # Verify error response
             assert result["success"] is False
@@ -325,7 +323,7 @@ class TestCallTool:
 
     @pytest.mark.asyncio
     async def test_call_tool_with_data_content(
-        self, mock_connection_state, mock_client
+        self, mock_connection_state, mock_client, mock_ctx
     ):
         """Test tool execution with data content instead of text."""
         # Mock tool result with data content
@@ -344,7 +342,7 @@ class TestCallTool:
             mock_client.call_tool = AsyncMock(return_value=tool_result)
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await call_tool("get_data", {})
+            result = await call_tool("get_data", {}, ctx=mock_ctx)
 
             # Verify response
             assert result["success"] is True
@@ -356,7 +354,7 @@ class TestToolsIntegration:
 
     @pytest.mark.asyncio
     async def test_list_then_call_workflow(
-        self, mock_connection_state, mock_client, mock_tools_result
+        self, mock_connection_state, mock_client, mock_tools_result, mock_ctx
     ):
         """Test workflow of listing tools then calling one."""
         # Mock tool result for call_tool
@@ -375,7 +373,7 @@ class TestToolsIntegration:
             mock_require.return_value = (mock_client, mock_connection_state)
 
             # Step 1: List tools
-            list_result = await list_tools()
+            list_result = await list_tools(ctx=mock_ctx)
             assert list_result["success"] is True
             assert len(list_result["tools"]) == 2
             tool_names = [t["name"] for t in list_result["tools"]]
@@ -387,12 +385,12 @@ class TestToolsIntegration:
             assert "b" in add_tool["input_schema"]["properties"]
 
             # Step 3: Call the add tool with proper arguments
-            call_result = await call_tool("add", {"a": 5, "b": 3})
+            call_result = await call_tool("add", {"a": 5, "b": 3}, ctx=mock_ctx)
             assert call_result["success"] is True
             assert call_result["tool_call"]["result"] == "8"
 
     @pytest.mark.asyncio
-    async def test_error_recovery_workflow(self, mock_connection_state, mock_client):
+    async def test_error_recovery_workflow(self, mock_connection_state, mock_client, mock_ctx):
         """Test workflow with error and recovery."""
         # Mock results for multiple calls
         tool_result = MagicMock()
@@ -411,13 +409,13 @@ class TestToolsIntegration:
             mock_client.call_tool = AsyncMock(
                 side_effect=Exception("Invalid argument: expected number")
             )
-            result1 = await call_tool("add", {"a": "invalid", "b": 3})
+            result1 = await call_tool("add", {"a": "invalid", "b": 3}, ctx=mock_ctx)
             assert result1["success"] is False
             assert result1["error"]["error_type"] == "invalid_arguments"
 
             # Second call succeeds
             mock_client.call_tool = AsyncMock(return_value=tool_result)
-            result2 = await call_tool("add", {"a": 7, "b": 3})
+            result2 = await call_tool("add", {"a": 7, "b": 3}, ctx=mock_ctx)
             assert result2["success"] is True
             assert result2["tool_call"]["result"] == "10"
 

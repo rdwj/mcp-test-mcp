@@ -83,21 +83,21 @@ class TestConnectionManager:
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
 
-        # Mock session with server info
-        mock_session = Mock()
+        # Mock initialize_result with server info
         mock_server_info = Mock()
         mock_server_info.name = "TestServer"
         mock_server_info.version = "1.0.0"
-        mock_session.server_info = mock_server_info
 
-        # Mock server capabilities
         mock_capabilities = Mock()
         mock_capabilities.tools = {"listChanged": True}
         mock_capabilities.resources = {"subscribe": True, "listChanged": True}
         mock_capabilities.prompts = {"listChanged": True}
-        mock_session.server_capabilities = mock_capabilities
 
-        mock_client._session = mock_session
+        mock_init_result = Mock()
+        mock_init_result.serverInfo = mock_server_info
+        mock_init_result.capabilities = mock_capabilities
+
+        mock_client.initialize_result = mock_init_result
 
         with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
             state = await ConnectionManager.connect("http://example.com/mcp")
@@ -124,7 +124,7 @@ class TestConnectionManager:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
             state = await ConnectionManager.connect("./server.py")
@@ -200,7 +200,7 @@ class TestConnectionManager:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
             await ConnectionManager.connect("http://example.com/mcp")
@@ -231,7 +231,7 @@ class TestConnectionManager:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(side_effect=Exception("Disconnect error"))
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
             await ConnectionManager.connect("http://example.com/mcp")
@@ -254,7 +254,7 @@ class TestConnectionManager:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
             await ConnectionManager.connect("http://example.com/mcp")
@@ -278,7 +278,7 @@ class TestConnectionManager:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
             await ConnectionManager.connect("http://example.com/mcp")
@@ -294,7 +294,7 @@ class TestConnectionManager:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
             await ConnectionManager.connect("http://example.com/mcp")
@@ -316,7 +316,7 @@ class TestConnectionManager:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         with patch("mcp_test_mcp.connection.Client", return_value=mock_client):
             await ConnectionManager.connect("http://example.com/mcp")
@@ -361,7 +361,7 @@ class TestConnectionManager:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         call_count = 0
 
@@ -396,7 +396,7 @@ class TestConnectionManagerHeaders:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         headers = {"Authorization": "Bearer test-token"}
 
@@ -430,7 +430,7 @@ class TestConnectionManagerHeaders:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         headers = {"X-API-Key": "secret-key"}
 
@@ -462,7 +462,7 @@ class TestConnectionManagerHeaders:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         headers = {"Authorization": "Bearer ignored-token"}
 
@@ -498,7 +498,7 @@ class TestConnectionManagerHeaders:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         with patch("mcp_test_mcp.connection.Client") as mock_client_class:
             mock_client_class.return_value = mock_client
@@ -526,7 +526,7 @@ class TestConnectionManagerHeaders:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client.is_connected = Mock(return_value=True)
-        mock_client._session = None
+        mock_client.initialize_result = None
 
         # Test without headers
         with patch("mcp_test_mcp.connection.Client", return_value=mock_client):

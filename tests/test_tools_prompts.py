@@ -60,14 +60,14 @@ def mock_prompts_result():
 class TestListPrompts:
     """Test suite for list_prompts tool."""
 
-    async def test_list_prompts_not_connected(self):
+    async def test_list_prompts_not_connected(self, mock_ctx):
         """Test list_prompts returns error when not connected."""
         with patch.object(ConnectionManager, "require_connection") as mock_require:
             mock_require.side_effect = ConnectionError(
                 "Not connected to any MCP server. Use connect() first."
             )
 
-            result = await list_prompts()
+            result = await list_prompts(ctx=mock_ctx)
 
             assert result["success"] is False
             assert result["error"]["error_type"] == "not_connected"
@@ -75,14 +75,14 @@ class TestListPrompts:
             assert result["prompts"] == []
 
     async def test_list_prompts_success(
-        self, mock_connection_state, mock_client, mock_prompts_result
+        self, mock_connection_state, mock_client, mock_prompts_result, mock_ctx
     ):
         """Test list_prompts successfully retrieves prompts from mock server."""
         with patch.object(ConnectionManager, "require_connection") as mock_require:
             mock_client.list_prompts = AsyncMock(return_value=mock_prompts_result)
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await list_prompts()
+            result = await list_prompts(ctx=mock_ctx)
 
             mock_client.list_prompts.assert_called_once()
             assert result["success"] is True
@@ -95,24 +95,24 @@ class TestListPrompts:
 class TestGetPrompt:
     """Test suite for get_prompt tool."""
 
-    async def test_get_prompt_not_connected(self):
+    async def test_get_prompt_not_connected(self, mock_ctx):
         """Test get_prompt returns error when not connected."""
         with patch.object(ConnectionManager, "require_connection") as mock_require:
             mock_require.side_effect = ConnectionError(
                 "Not connected to any MCP server. Use connect() first."
             )
 
-            result = await get_prompt("greeting", {"name": "Alice"})
+            result = await get_prompt("greeting", {"name": "Alice"}, ctx=mock_ctx)
 
             assert result["success"] is False
             assert result["error"]["error_type"] == "not_connected"
             assert result["prompt"] is None
 
-    async def test_get_prompt_success(self, mock_connection_state, mock_client):
+    async def test_get_prompt_success(self, mock_connection_state, mock_client, mock_ctx):
         """Test get_prompt successfully retrieves rendered prompt from mock server."""
         prompt_result = MagicMock()
         prompt_result.description = "Generate a greeting"
-        
+
         message = MagicMock()
         message.role = "user"
         message_content = MagicMock()
@@ -127,7 +127,7 @@ class TestGetPrompt:
             mock_client.get_prompt = AsyncMock(return_value=prompt_result)
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await get_prompt("greeting", {"name": "Alice"})
+            result = await get_prompt("greeting", {"name": "Alice"}, ctx=mock_ctx)
 
             mock_client.get_prompt.assert_called_once_with("greeting", {"name": "Alice"})
             mock_increment.assert_called_once_with("prompts_executed")
@@ -135,7 +135,7 @@ class TestGetPrompt:
             assert result["prompt"]["name"] == "greeting"
             assert len(result["prompt"]["messages"]) == 1
 
-    async def test_get_prompt_not_found(self, mock_connection_state, mock_client):
+    async def test_get_prompt_not_found(self, mock_connection_state, mock_client, mock_ctx):
         """Test get_prompt handles non-existent prompt correctly."""
         with patch.object(ConnectionManager, "require_connection") as mock_require, patch.object(
             ConnectionManager, "increment_stat"
@@ -145,7 +145,7 @@ class TestGetPrompt:
             )
             mock_require.return_value = (mock_client, mock_connection_state)
 
-            result = await get_prompt("nonexistent_prompt", {})
+            result = await get_prompt("nonexistent_prompt", {}, ctx=mock_ctx)
 
             assert result["success"] is False
             assert result["error"]["error_type"] == "prompt_not_found"

@@ -175,23 +175,22 @@ class ConnectionManager:
                 # Get server information
                 server_info: dict[str, Any] = {}
                 try:
-                    # Try to get server info via initialization result
-                    if hasattr(client, "_session") and client._session:
-                        session = client._session
-                        if hasattr(session, "server_info"):
-                            info = session.server_info
-                            server_info = {
-                                "name": getattr(info, "name", None),
-                                "version": getattr(info, "version", None),
+                    # Get server info via public initialize_result API
+                    init_result = client.initialize_result
+                    if init_result is not None:
+                        info = init_result.serverInfo
+                        server_info = {
+                            "name": getattr(info, "name", None),
+                            "version": getattr(info, "version", None),
+                        }
+                        # Add capabilities if available
+                        caps: ServerCapabilities = init_result.capabilities
+                        if caps is not None:
+                            server_info["capabilities"] = {
+                                "tools": bool(getattr(caps, "tools", None)),
+                                "resources": bool(getattr(caps, "resources", None)),
+                                "prompts": bool(getattr(caps, "prompts", None)),
                             }
-                            # Add capabilities if available
-                            if hasattr(session, "server_capabilities"):
-                                caps: ServerCapabilities = session.server_capabilities
-                                server_info["capabilities"] = {
-                                    "tools": bool(getattr(caps, "tools", None)),
-                                    "resources": bool(getattr(caps, "resources", None)),
-                                    "prompts": bool(getattr(caps, "prompts", None)),
-                                }
                 except Exception:
                     # If we can't get server info, continue without it
                     pass
