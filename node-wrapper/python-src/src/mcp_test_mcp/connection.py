@@ -28,7 +28,7 @@ from datetime import datetime
 from typing import Any, Optional, Union
 
 from fastmcp import Client
-from fastmcp.client.auth import BearerAuth, OAuth
+from fastmcp.client.auth import BearerAuth
 from fastmcp.client.transports import (
     SSETransport,
     StdioTransport,
@@ -110,20 +110,23 @@ class ConnectionManager:
         return "stdio"
 
     @staticmethod
-    def _build_auth(auth: Optional[Union[str, dict]], url: Optional[str] = None) -> Any:
-        """Convert auth parameter to FastMCP auth object.
+    def _build_auth(auth: Optional[Union[str, dict]]) -> Any:
+        """Convert auth parameter to a value suitable for Client(auth=...).
+
+        For OAuth, returns the string ``'oauth'`` so the Client handles
+        endpoint discovery internally (avoids resource-URL mismatches when
+        constructing OAuth objects manually).
 
         Args:
             auth: Authentication config. Accepts:
                 - None: No authentication
-                - str "oauth": Trigger OAuth flow
+                - str "oauth": Trigger OAuth flow (passed through to Client)
                 - str (other): Bearer token
                 - dict {"type": "bearer", "token": "..."}: Bearer token
-                - dict {"type": "oauth", ...}: OAuth with optional scopes/client_id/client_secret
-            url: Server URL, passed to OAuth for endpoint discovery.
+                - dict {"type": "oauth", ...}: OAuth (passed through to Client)
 
         Returns:
-            FastMCP auth object (BearerAuth, OAuth) or None.
+            Auth value for Client(): BearerAuth, ``'oauth'``, or None.
             Credential values are never logged.
 
         Raises:
@@ -133,7 +136,7 @@ class ConnectionManager:
             return None
         if isinstance(auth, str):
             if auth == "oauth":
-                return OAuth(mcp_url=url)
+                return "oauth"
             return BearerAuth(token=auth)
         if isinstance(auth, dict):
             auth_type = auth.get("type")
@@ -143,12 +146,7 @@ class ConnectionManager:
                     raise ValueError("Auth dict with type 'bearer' requires 'token' key")
                 return BearerAuth(token=token)
             if auth_type == "oauth":
-                return OAuth(
-                    mcp_url=url,
-                    scopes=auth.get("scopes"),
-                    client_id=auth.get("client_id"),
-                    client_secret=auth.get("client_secret"),
-                )
+                return "oauth"
             raise ValueError(f"Unknown auth type: {auth_type!r}. Expected 'bearer' or 'oauth'")
         raise ValueError(f"auth must be a string or dict, got {type(auth).__name__}")
 
@@ -229,7 +227,7 @@ class ConnectionManager:
                 headers = None
 
             # Build auth object if provided
-            auth_obj = cls._build_auth(auth, url=url)
+            auth_obj = cls._build_auth(auth)
 
             try:
                 # Track whether headers were actually used
@@ -247,12 +245,20 @@ class ConnectionManager:
                     transport_type = cls._infer_transport(url)
 
                     # Branch 2: HTTP with custom headers (need explicit transport)
-                    if headers and transport_type in ("streamable-http", "sse"):
+                    # OAuth is handled by the Client directly (Branch 3),
+                    # so only build explicit transports for non-OAuth auth.
+                    if (
+                        headers
+                        and transport_type in ("streamable-http", "sse")
+                        and auth_obj != "oauth"
+                    ):
                         transport_obj: Union[SSETransport, StreamableHttpTransport]
                         if transport_type == "sse":
                             transport_obj = SSETransport(url=url, headers=headers, auth=auth_obj)
                         else:
-                            transport_obj = StreamableHttpTransport(url=url, headers=headers, auth=auth_obj)
+                            transport_obj = StreamableHttpTransport(
+                                url=url, headers=headers, auth=auth_obj
+                            )
                         client = Client(transport_obj, timeout=connect_timeout)
                         headers_provided = True
                     # Branch 3: Auto-detect transport (with optional auth)
@@ -276,7 +282,7 @@ class ConnectionManager:
                 # Determine auth type for state tracking
                 auth_type_value = None
                 if auth_obj is not None:
-                    auth_type_value = "oauth" if isinstance(auth_obj, OAuth) else "bearer"
+                    auth_type_value = "oauth" if auth_obj == "oauth" else "bearer"
 
                 # Get server information
                 server_info: dict[str, Any] = {}

@@ -560,11 +560,9 @@ class TestConnectionManagerAuth:
         assert isinstance(result, BearerAuth)
 
     def test_build_auth_oauth_string(self):
-        """_build_auth('oauth') returns OAuth."""
-        from fastmcp.client.auth import OAuth
-
-        result = ConnectionManager._build_auth("oauth", url="https://example.com/mcp")
-        assert isinstance(result, OAuth)
+        """_build_auth('oauth') returns 'oauth' string for Client to handle."""
+        result = ConnectionManager._build_auth("oauth")
+        assert result == "oauth"
 
     def test_build_auth_bearer_dict(self):
         """_build_auth with bearer dict returns BearerAuth."""
@@ -574,13 +572,9 @@ class TestConnectionManagerAuth:
         assert isinstance(result, BearerAuth)
 
     def test_build_auth_oauth_dict(self):
-        """_build_auth with oauth dict returns OAuth."""
-        from fastmcp.client.auth import OAuth
-
-        result = ConnectionManager._build_auth(
-            {"type": "oauth", "scopes": ["read"]}, url="https://example.com/mcp"
-        )
-        assert isinstance(result, OAuth)
+        """_build_auth with oauth dict returns 'oauth' string for Client to handle."""
+        result = ConnectionManager._build_auth({"type": "oauth", "scopes": ["read"]})
+        assert result == "oauth"
 
     def test_build_auth_bearer_dict_missing_token(self):
         """_build_auth with bearer dict missing token raises ValueError."""
@@ -621,9 +615,7 @@ class TestConnectionManagerAuth:
 
     @pytest.mark.asyncio
     async def test_connect_with_oauth_auth(self):
-        """Verify OAuth instance is passed to Client."""
-        from fastmcp.client.auth import OAuth
-
+        """Verify 'oauth' string is passed to Client for OAuth flow."""
         mock_client = Mock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
@@ -638,7 +630,7 @@ class TestConnectionManagerAuth:
             )
 
             call_kwargs = mock_client_class.call_args
-            assert isinstance(call_kwargs.kwargs.get("auth"), OAuth)
+            assert call_kwargs.kwargs.get("auth") == "oauth"
 
     @pytest.mark.asyncio
     async def test_connect_auth_type_tracked(self):
