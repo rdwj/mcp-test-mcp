@@ -563,7 +563,7 @@ class TestConnectionManagerAuth:
         """_build_auth('oauth') returns OAuth."""
         from fastmcp.client.auth import OAuth
 
-        result = ConnectionManager._build_auth("oauth")
+        result = ConnectionManager._build_auth("oauth", url="https://example.com/mcp")
         assert isinstance(result, OAuth)
 
     def test_build_auth_bearer_dict(self):
@@ -577,7 +577,9 @@ class TestConnectionManagerAuth:
         """_build_auth with oauth dict returns OAuth."""
         from fastmcp.client.auth import OAuth
 
-        result = ConnectionManager._build_auth({"type": "oauth", "scopes": ["read"]})
+        result = ConnectionManager._build_auth(
+            {"type": "oauth", "scopes": ["read"]}, url="https://example.com/mcp"
+        )
         assert isinstance(result, OAuth)
 
     def test_build_auth_bearer_dict_missing_token(self):

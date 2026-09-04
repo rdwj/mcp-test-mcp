@@ -110,7 +110,7 @@ class ConnectionManager:
         return "stdio"
 
     @staticmethod
-    def _build_auth(auth: Optional[Union[str, dict]]) -> Any:
+    def _build_auth(auth: Optional[Union[str, dict]], url: Optional[str] = None) -> Any:
         """Convert auth parameter to FastMCP auth object.
 
         Args:
@@ -120,6 +120,7 @@ class ConnectionManager:
                 - str (other): Bearer token
                 - dict {"type": "bearer", "token": "..."}: Bearer token
                 - dict {"type": "oauth", ...}: OAuth with optional scopes/client_id/client_secret
+            url: Server URL, passed to OAuth for endpoint discovery.
 
         Returns:
             FastMCP auth object (BearerAuth, OAuth) or None.
@@ -132,7 +133,7 @@ class ConnectionManager:
             return None
         if isinstance(auth, str):
             if auth == "oauth":
-                return OAuth()
+                return OAuth(mcp_url=url)
             return BearerAuth(token=auth)
         if isinstance(auth, dict):
             auth_type = auth.get("type")
@@ -143,6 +144,7 @@ class ConnectionManager:
                 return BearerAuth(token=token)
             if auth_type == "oauth":
                 return OAuth(
+                    mcp_url=url,
                     scopes=auth.get("scopes"),
                     client_id=auth.get("client_id"),
                     client_secret=auth.get("client_secret"),
@@ -227,7 +229,7 @@ class ConnectionManager:
                 headers = None
 
             # Build auth object if provided
-            auth_obj = cls._build_auth(auth)
+            auth_obj = cls._build_auth(auth, url=url)
 
             try:
                 # Track whether headers were actually used
