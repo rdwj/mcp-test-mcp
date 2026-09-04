@@ -92,14 +92,12 @@ async def test_list_tools():
 
 @pytest.mark.asyncio
 async def test_server_ping():
-    """Test basic server connectivity using the ping method."""
+    """Test basic server connectivity via list_tools (ping removed in MCP SDK v2)."""
     from mcp_test_mcp.server import mcp
 
     async with Client(mcp) as client:
-        # Test basic server ping
-        result = await client.ping()
-
-        assert result is True
+        tools = await client.list_tools()
+        assert len(tools) > 0
 
 
 @pytest.mark.asyncio
