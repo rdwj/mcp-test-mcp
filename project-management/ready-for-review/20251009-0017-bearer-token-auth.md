@@ -2,10 +2,14 @@
 story_id: "0017"
 title: "Bearer token authentication support"
 created: "2025-10-09"
-status: "backlog"
+status: ready-for-review
 dependencies: ["0005"]
 estimated_complexity: "medium"
 tags: ["authentication", "security", "phase2"]
+  - status: in-progress
+    timestamp: 2026-09-04T17:18:23Z
+  - status: ready-for-review
+    timestamp: 2026-09-04T17:18:36Z
 ---
 
 # Story 0017: Bearer token authentication support
@@ -16,15 +20,15 @@ Add bearer token authentication support to enable connecting to authenticated MC
 
 ## Acceptance Criteria
 
-- [ ] `connect_to_server` accepts optional `auth` parameter
-- [ ] Auth parameter supports `{"type": "bearer", "token": "..."}` format
-- [ ] Alternative: Token loaded from environment variable
-- [ ] Token passed in Authorization header for HTTP connections
-- [ ] Token never logged or included in error messages
-- [ ] Unit tests for authenticated connections
-- [ ] Integration tests with mock authenticated server
+- [x] `connect_to_server` accepts optional `auth` parameter
+- [x] Auth parameter supports `{"type": "bearer", "token": "..."}` format
+- [x] Alternative: Token loaded from environment variable
+- [x] Token passed in Authorization header for HTTP connections
+- [x] Token never logged or included in error messages
+- [x] Unit tests for authenticated connections
+- [x] Integration tests with mock authenticated server
 - [ ] Documentation updated with authentication examples
-- [ ] Security tests verify no credential leakage
+- [x] Security tests verify no credential leakage
 
 ## Technical Notes
 
