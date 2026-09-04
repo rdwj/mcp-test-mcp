@@ -28,10 +28,10 @@ Scope: expanded from "upgrade and close" to "upgrade, release, test live against
 - The `venv/` directory (used by Claude Code's MCP config) had stale FastMCP 2.12.4 even after upgrading `.venv/`. Fixed by installing FastMCP 4.0.2 into `venv/` directly. This is a local environment issue, not a code issue.
 
 ## Backlog delta
-Closed #10. No new issues filed. Story 0017 moved to ready-for-review (docs acceptance criterion still open).
+Closed #10. Commented on #7 with FastMCP 4 guidance (elicitation era-gated, sampling removed). Story 0017 moved to ready-for-review (docs acceptance criterion still open).
 
 ## Drift & forward-collisions
-- Backward: none
+- Backward: #7 (elicitation/sampling) -- scope narrowed by FastMCP 4; sampling removed from protocol, elicitation era-gated. Commented on issue with guidance.
 - Forward: none
 
 ## For the reviewer
