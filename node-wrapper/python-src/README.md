@@ -193,7 +193,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install mcp-test-mcp
 
 # Or install from source
-git clone https://github.com/example/mcp-test-mcp
+git clone https://github.com/rdwj/mcp-test-mcp
 cd mcp-test-mcp
 pip install -e ".[dev]"
 ```

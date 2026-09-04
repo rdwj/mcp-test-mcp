@@ -90,6 +90,9 @@ setup_json_logging()
 
 logger = logging.getLogger(__name__)
 
+# Import version for health check
+from . import __version__
+
 # Import the shared FastMCP server instance
 from .mcp_instance import mcp
 
@@ -115,7 +118,7 @@ async def health_check(ctx: Context) -> Dict[str, Any]:
     return {
         "status": "healthy",
         "server": "mcp-test-mcp",
-        "version": "0.1.6",
+        "version": __version__,
         "transport": "stdio"
     }
 
